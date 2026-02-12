@@ -460,7 +460,14 @@ def process_launch(
         error_message = rp_client.get_test_item_logs(test_id)
 
         # Build ReportPortal URL
-        rp_url = f"{team_config.reportportal_url}/ui/#{team_config.reportportal_project}/launches/all/{launch_id}/log?item={test_id}"
+        # Use filter_id-based URL format: /launches/{filter_id}/{launch_id}/{parent_id}/{item_id}/log
+        # Falls back to /launches/all/ if filter_id is not configured
+        parent_id = test_item.get('parent', '')
+        filter_path = str(team_config.reportportal_filter_id) if team_config.reportportal_filter_id else 'all'
+        if parent_id and filter_path != 'all':
+            rp_url = f"{team_config.reportportal_url}/ui/#{team_config.reportportal_project}/launches/{filter_path}/{launch_id}/{parent_id}/{test_id}/log"
+        else:
+            rp_url = f"{team_config.reportportal_url}/ui/#{team_config.reportportal_project}/launches/{filter_path}/{launch_id}/log?item={test_id}"
 
         instance = FailureInstance(
             launch_id=launch_id,
