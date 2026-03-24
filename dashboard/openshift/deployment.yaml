@@ -26,7 +26,7 @@ spec:
             import os
 
             print("Downloading repository...")
-            url = "https://github.com/rrasouli/ci-failure-tracker/archive/refs/heads/ci-failure-tracker-tool.tar.gz"
+            url = "https://github.com/redhat-community-ai-tools/ci-failure-tracker/archive/refs/heads/master.tar.gz"
             tarball = "/tmp/repo.tar.gz"
 
             urllib.request.urlretrieve(url, tarball)
