@@ -1,0 +1,59 @@
+# Example Dashboard Configuration for Storage QE Team
+#
+# This is an example showing how to customize the dashboard for a Storage team
+# tracking CSI, persistent volume, and storage-related periodic CI jobs.
+#
+# To use:
+# 1. Copy this to dashboard/config.yaml
+# 2. Adjust job patterns, versions, and platforms for your needs
+# 3. Set REPORTPORTAL_API_TOKEN environment variable
+# 4. Run: ./dashboard.py collect --days 30
+# 5. Run: ./dashboard.py serve
+
+# Data collector configuration
+collector:
+  type: "reportportal"
+
+  reportportal:
+    url: "https://reportportal-openshift.apps.dno.ocp-hub.prod.psi.redhat.com"
+    project: "prow"
+
+    # Storage team job patterns
+    job_patterns:
+      - "periodic-ci-openshift-csi-*-release-{version}-*"
+      - "periodic-ci-openshift-storage-*-release-{version}-*"
+      - "periodic-ci-openshift-local-storage-operator-release-{version}-*"
+
+    page_size: 150
+    max_pages: 10
+    max_workers: 5
+
+# Tracking configuration
+tracking:
+  # Versions to monitor
+  versions:
+    - "4.21"
+    - "4.22"
+
+  # Platforms commonly used by storage team
+  platforms:
+    - "aws"
+    - "gcp"
+    - "azure"
+    - "vsphere"  # Important for storage testing
+
+  lookback_days: 30
+
+  # Exclude non-storage tests
+  blocklist:
+    - "OCP-67890"  # Example: Non-storage test
+
+# Database configuration
+database:
+  path: "./data/dashboard.db"
+
+# Web server configuration
+web:
+  host: "0.0.0.0"
+  port: 8080
+  debug: false

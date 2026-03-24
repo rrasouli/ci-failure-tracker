@@ -1,0 +1,60 @@
+# Example Dashboard Configuration for Networking QE Team
+#
+# This is an example showing how to customize the dashboard for a Networking team
+# tracking OVN, Network Edge, and related periodic CI jobs.
+#
+# To use:
+# 1. Copy this to dashboard/config.yaml
+# 2. Adjust job patterns, versions, and platforms for your needs
+# 3. Set REPORTPORTAL_API_TOKEN environment variable
+# 4. Run: ./dashboard.py collect --days 30
+# 5. Run: ./dashboard.py serve
+
+# Data collector configuration
+collector:
+  type: "reportportal"
+
+  reportportal:
+    url: "https://reportportal-openshift.apps.dno.ocp-hub.prod.psi.redhat.com"
+    project: "prow"
+
+    # Networking team job patterns
+    job_patterns:
+      - "periodic-ci-openshift-ovn-kubernetes-release-{version}-*"
+      - "periodic-ci-openshift-network-edge-release-{version}-*"
+      - "periodic-ci-openshift-sdn-release-{version}-*"
+
+    page_size: 150
+    max_pages: 10
+    max_workers: 5
+
+# Tracking configuration
+tracking:
+  # Versions to monitor
+  versions:
+    - "4.21"
+    - "4.22"
+    - "4.23"
+
+  # Platforms commonly used by networking team
+  platforms:
+    - "aws"
+    - "gcp"
+    - "azure"
+    - "metal"  # Bare metal for network performance testing
+
+  lookback_days: 30
+
+  # Exclude non-networking tests or deprecated tests
+  blocklist:
+    - "OCP-12345"  # Example: Non-networking test
+
+# Database configuration
+database:
+  path: "./data/dashboard.db"
+
+# Web server configuration
+web:
+  host: "0.0.0.0"
+  port: 8080
+  debug: false

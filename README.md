@@ -1,10 +1,55 @@
-# CI Failure Tracker - ReportPortal to Jira Bridge
+# CI Failure Tracker
+
+A comprehensive suite of tools for tracking and analyzing OpenShift CI test failures.
 
 ## Overview
 
-New automated tool that analyzes CI test failures from ReportPortal and creates Jira tickets for QE teams.
+This repository contains two complementary tools:
 
-**Key Feature**: Creates **one ticket per unique test case** (e.g., OCP-11111), aggregating failures across all platforms (AWS, GCP, Azure, etc.) with links to each failure instance.
+1. **Dashboard** - Web-based CI test health tracking with pass rate analytics and weekly reports
+2. **ReportPortal to Jira Bridge** - Automated failure tracking and ticket creation
+
+Both tools are **generic and customizable** for any QE team tracking OpenShift CI tests.
+
+## Quick Start for Your Team
+
+This tool works for **any QE team** running periodic CI tests. To use it:
+
+### Option 1: Use the Dashboard (Recommended)
+
+1. **Fork this repository** to your GitHub account/org
+
+2. **Choose an example configuration:**
+   ```bash
+   # See examples for Networking, Storage, or other teams
+   cp examples/networking-team-config.yaml dashboard/config.yaml
+   # OR customize from scratch - see dashboard/config.yaml
+   ```
+
+3. **Edit configuration for your team:**
+   - Update `job_patterns` to match your periodic CI jobs
+   - Set `versions` (e.g., 4.21, 4.22, 4.23)
+   - Choose `platforms` (aws, gcp, azure, vsphere, etc.)
+
+4. **Deploy:**
+   - **OpenShift**: See `dashboard/openshift/README.md`
+   - **Local**: `cd dashboard && pip install -r requirements.txt && ./dashboard.py serve`
+
+### Option 2: Use the Jira Bridge
+
+See `CONTRIBUTING.md` for detailed setup instructions.
+
+### Need Help?
+
+- **Examples**: Check `examples/` directory for sample configurations
+- **Documentation**: See `CONTRIBUTING.md` for detailed customization guide
+- **Issues**: Open an issue if you need assistance
+
+Example job patterns for different teams:
+- **WinC**: `periodic-ci-*-winc-*`
+- **Networking**: `periodic-ci-*-network-*`, `periodic-ci-*-ovn-*`
+- **Storage**: `periodic-ci-*-storage-*`, `periodic-ci-*-csi-*`
+- **Your team**: Find your jobs at https://prow.ci.openshift.org/
 
 ## Architecture
 

@@ -1,9 +1,26 @@
 # CI Test Pass Rate Dashboard Configuration
+#
+# ============================================================================
+# CUSTOMIZE THIS FILE FOR YOUR TEAM
+# ============================================================================
+#
+# This is currently configured for the Windows Containers (WinC) QE team.
+# To use for your team:
+# 1. Update job_patterns below to match your periodic CI jobs
+# 2. Adjust versions and platforms in the tracking section
+# 3. Update blocklist with test IDs to exclude
+# 4. Deploy to OpenShift or run locally
+#
+# Example job patterns for different teams:
+#   - Networking: "periodic-ci-*-network-*", "periodic-ci-*-ovn-*"
+#   - Storage:    "periodic-ci-*-storage-*", "periodic-ci-*-csi-*"
+#   - Your team:  "periodic-ci-*-{your-component}-*"
+# ============================================================================
 
 # Data collector configuration
 collector:
   # Type of collector: "reportportal", "prow-gcs", "gcsweb", "sippy"
-  type: "reportportal"  # Using gcsweb - direct Prow artifacts access!
+  type: "reportportal"
 
   # ReportPortal configuration (alternative data source)
   reportportal:
@@ -11,8 +28,10 @@ collector:
     project: "prow"
     # API token from environment variable: REPORTPORTAL_API_TOKEN
 
-    # Job name patterns to monitor
+    # ========================================================================
+    # CUSTOMIZE: Job name patterns to monitor for your team
     # {version} will be replaced with each version from tracking.versions
+    # ========================================================================
     job_patterns:
       - "periodic-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
       - "periodic-ci-openshift-windows-machine-config-operator-release-{version}-*"
@@ -81,12 +100,17 @@ collector:
 
 # Tracking configuration
 tracking:
-  # OpenShift versions to monitor
+  # ========================================================================
+  # CUSTOMIZE: OpenShift versions to monitor for your team
+  # ========================================================================
   versions:
     - "4.21"
     - "4.22"
 
-  # Cloud platforms to track
+  # ========================================================================
+  # CUSTOMIZE: Cloud platforms to track for your team
+  # Common platforms: aws, azure, gcp, vsphere, nutanix, metal, alibabacloud
+  # ========================================================================
   platforms:
     - "aws"
     - "azure"
@@ -96,11 +120,13 @@ tracking:
   # How many days to look back when collecting data
   lookback_days: 30
 
-  # Blocklist - exclude specific test IDs from dashboard
-  # These tests might still exist in ReportPortal but should not be tracked
+  # ========================================================================
+  # CUSTOMIZE: Blocklist - exclude specific test IDs from dashboard
+  # Add test IDs that should not appear in your team's dashboard
+  # ========================================================================
   blocklist:
-    - "OCP-60944"  # Removed from test suite
-    - "OCP-66352"  # Not a WINC test case
+    - "OCP-60944"  # Example: Removed from test suite
+    - "OCP-66352"  # Example: Not relevant to team
 
 # Database configuration
 database:
