@@ -28,8 +28,12 @@ class DashboardDatabase:
         self.conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30.0)
         self.conn.row_factory = sqlite3.Row  # Return rows as dictionaries
 
-        # Enable WAL mode for better concurrent access
-        self.conn.execute('PRAGMA journal_mode=WAL')
+        # Try to enable WAL mode for better concurrent access (ignore if fails)
+        try:
+            self.conn.execute('PRAGMA journal_mode=WAL')
+        except sqlite3.OperationalError:
+            # WAL mode might fail if database is on read-only filesystem or other constraints
+            pass
 
         self._create_tables()
 
