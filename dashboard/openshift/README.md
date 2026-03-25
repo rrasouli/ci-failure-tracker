@@ -16,14 +16,22 @@ oc new-project winc-dashboard \
   --display-name="WINC CI Health Dashboard" \
   --description="Windows Containers QE CI test health tracking"
 
-# 2. Create secret for ReportPortal token
+# 2. Create secrets
+# ReportPortal API token
 oc create secret generic reportportal-token \
   --from-literal=token="YOUR_REPORTPORTAL_API_TOKEN"
+
+# Webhook secret for GitHub integration
+oc create secret generic webhook-secret \
+  --from-literal=WebHookSecretKey=$(openssl rand -hex 20)
 
 # 3. Deploy all resources
 oc apply -f openshift/
 
-# 4. Get the dashboard URL
+# 4. Trigger initial build
+oc start-build winc-dashboard
+
+# 5. Get the dashboard URL
 oc get route winc-dashboard -o jsonpath='{.spec.host}'
 ```
 
@@ -72,7 +80,129 @@ Data collection happens automatically on first dashboard access. When you visit 
 
 No manual intervention or scheduled jobs required - data collection is on-demand.
 
+## GitHub Webhook - Automatic Deployments
+
+The BuildConfig is configured to automatically rebuild and deploy when you push to GitHub.
+
+### Setup Webhook
+
+**1. Get the webhook URL with secret:**
+```bash
+WEBHOOK_SECRET=$(oc get secret webhook-secret -o jsonpath='{.data.WebHookSecretKey}' | base64 -d)
+NAMESPACE=$(oc project -q)
+WEBHOOK_URL="https://api.build10.ci.devcluster.openshift.com:6443/apis/build.openshift.io/v1/namespaces/${NAMESPACE}/buildconfigs/winc-dashboard/webhooks/${WEBHOOK_SECRET}/github"
+
+echo $WEBHOOK_URL
+```
+
+**2. Configure webhook in GitHub:**
+
+Using GitHub CLI:
+```bash
+# Create webhook payload
+cat > /tmp/webhook.json << EOF
+{
+  "name": "web",
+  "active": true,
+  "events": ["push"],
+  "config": {
+    "url": "${WEBHOOK_URL}",
+    "content_type": "json",
+    "insecure_ssl": "1"
+  }
+}
+EOF
+
+# Add webhook to your repository
+gh api repos/YOUR_ORG/ci-failure-tracker/hooks -X POST --input /tmp/webhook.json
+```
+
+Or manually in GitHub UI:
+1. Go to: `https://github.com/YOUR_ORG/ci-failure-tracker/settings/hooks`
+2. Click "Add webhook"
+3. Paste the webhook URL
+4. Content type: `application/json`
+5. SSL verification: Disable (for internal OpenShift clusters)
+6. Events: Just the push event
+7. Click "Add webhook"
+
+**3. Test the webhook:**
+```bash
+# Make a change and push to master
+git commit -m "Test webhook"
+git push origin master
+
+# Watch the build trigger automatically
+oc get builds -w
+```
+
+### How It Works
+
+```
+GitHub (push to master)
+    ↓ webhook notification
+OpenShift BuildConfig
+    ↓ pulls latest code
+Docker build (using dashboard/Dockerfile)
+    ↓ builds image
+ImageStream (stores image)
+    ↓ auto-triggers deployment
+Deployment (rolling update)
+    ↓
+Dashboard updated with latest code!
+```
+
+### Verify Webhook
+
+```bash
+# Check recent builds
+oc get builds
+
+# Check build logs
+oc logs -f build/winc-dashboard-3
+
+# Verify webhook deliveries in GitHub
+gh api repos/YOUR_ORG/ci-failure-tracker/hooks | jq '.[].ping_url'
+```
+
+### Manual Build Trigger
+
+If webhook isn't working, trigger manually:
+```bash
+oc start-build winc-dashboard
+```
+
 ## Troubleshooting
+
+### Build pods showing 0/1 (NORMAL)
+
+If you see build pods with status "Completed" and 0/1 containers, **this is expected**:
+
+```bash
+NAME                        READY   STATUS      RESTARTS   AGE
+winc-dashboard-1-build      0/1     Completed   0          1h
+winc-dashboard-2-build      0/1     Completed   0          50m
+winc-dashboard-77ff58-xxx   1/1     Running     0          10m  ← This is your app
+```
+
+**Why 0/1 is normal for build pods:**
+- Build pods are **one-time jobs** that build Docker images
+- After building, they stop (0/1 containers)
+- Status "Completed" means build succeeded
+- OpenShift keeps them for debugging
+- Your actual app pod shows 1/1 Running
+
+**To see only running pods:**
+```bash
+oc get pods -l app=winc-dashboard --field-selector=status.phase=Running
+```
+
+**To clean up old build pods:**
+```bash
+# OpenShift automatically cleans based on BuildConfig settings
+# Or manually delete old builds:
+oc delete builds --field-selector=status=Complete
+```
 
 ### Pod not starting
 
