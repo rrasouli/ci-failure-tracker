@@ -307,14 +307,24 @@ class DashboardDatabase:
                  AND tr2.timestamp >= ?
                  AND tr2.timestamp <= ?
                  ORDER BY tr2.timestamp DESC
-                 LIMIT 1) as sample_error
+                 LIMIT 1) as sample_error,
+                (SELECT log_url FROM test_results tr3
+                 WHERE tr3.test_name = test_results.test_name
+                 AND tr3.version = test_results.version
+                 AND tr3.status = 'failed'
+                 AND tr3.log_url IS NOT NULL
+                 AND tr3.timestamp >= ?
+                 AND tr3.timestamp <= ?
+                 ORDER BY tr3.timestamp DESC
+                 LIMIT 1) as sample_log_url
             FROM test_results
             WHERE timestamp >= ? AND timestamp <= ?
             AND status != 'skipped'
             AND test_name LIKE 'OCP-%'
         """
 
-        params = [start_date.isoformat(), end_date.isoformat(), start_date.isoformat(), end_date.isoformat()]
+        params = [start_date.isoformat(), end_date.isoformat(), start_date.isoformat(), end_date.isoformat(),
+                  start_date.isoformat(), end_date.isoformat()]
 
         if test_name:
             query += " AND test_name = ?"
