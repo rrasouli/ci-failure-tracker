@@ -124,10 +124,21 @@ class ProwGCSCollector(BaseCollector):
             response.raise_for_status()
 
             # Parse JavaScript response: var allBuilds = {...};
-            content = response.text
-            # Remove "var allBuilds = " from start and ";" from end
-            json_str = content[17:].rstrip(';')
             import json
+            content = response.text
+
+            # Debug: print first and last 100 chars
+            print(f"Response first 100 chars: {content[:100]}")
+            print(f"Response last 100 chars: {content[-100:]}")
+
+            # Remove "var allBuilds = " from start and ";" from end
+            json_str = content[17:].rstrip('; \n\r\t')
+
+            # Debug: print JSON string info
+            print(f"JSON string length: {len(json_str)}")
+            print(f"JSON string first 100 chars: {json_str[:100]}")
+            print(f"JSON string last 100 chars: {json_str[-100:]}")
+
             data = json.loads(json_str)
 
             all_jobs = data.get('items', [])
