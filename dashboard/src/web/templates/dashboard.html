@@ -727,9 +727,8 @@
                 });
 
                 if (response.ok) {
-                    // Show collection banner and reload to monitor progress
-                    alert('Data collection started! The page will monitor progress.');
-                    location.reload();
+                    // Start monitoring collection progress
+                    checkCollectionStatus();
                 } else if (response.status === 409) {
                     alert('Collection is already running. Please wait for it to complete.');
                 } else {
@@ -1141,6 +1140,7 @@
 
         // Collection status polling
         let collectionPolling = null;
+        let wasRunning = false;
 
         async function checkCollectionStatus() {
             try {
@@ -1152,6 +1152,7 @@
                 const refreshButton = document.getElementById('refreshButton');
 
                 if (status.running) {
+                    wasRunning = true;
                     banner.classList.add('show');
                     banner.classList.remove('error', 'success');
                     message.textContent = status.progress || 'Collecting data...';
@@ -1166,19 +1167,21 @@
                     banner.classList.remove('success');
                     message.textContent = 'Collection failed: ' + status.error;
                     refreshButton.style.display = 'block';
+                    refreshButton.textContent = 'Refresh Page';
+                    wasRunning = false;
 
                     // Stop polling
                     if (collectionPolling) {
                         clearInterval(collectionPolling);
                         collectionPolling = null;
                     }
-                } else if (status.last_run) {
-                    // Collection completed successfully
+                } else if (wasRunning && status.completed_at) {
+                    // Collection just completed successfully
+                    wasRunning = false;
                     banner.classList.add('show', 'success');
                     banner.classList.remove('error');
-                    message.textContent = status.progress || 'Data collection completed!';
-                    refreshButton.style.display = 'block';
-                    refreshButton.textContent = 'Refresh to View Data';
+                    message.textContent = status.progress || 'Data collection completed! Refreshing data...';
+                    refreshButton.style.display = 'none';
 
                     // Stop polling
                     if (collectionPolling) {
@@ -1186,11 +1189,17 @@
                         collectionPolling = null;
                     }
 
-                    // Auto refresh after 3 seconds
-                    setTimeout(() => location.reload(), 3000);
+                    // Refresh dashboard data without full page reload
+                    refreshDashboard();
+
+                    // Hide banner after a moment
+                    setTimeout(() => {
+                        banner.classList.remove('show');
+                    }, 3000);
                 } else {
-                    // No collection running or completed
+                    // No collection running
                     banner.classList.remove('show');
+                    wasRunning = false;
 
                     // Stop polling
                     if (collectionPolling) {

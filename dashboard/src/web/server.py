@@ -24,7 +24,7 @@ collection_status = {
     'running': False,
     'progress': '',
     'error': None,
-    'last_run': None,
+    'completed_at': None,
     'lock': threading.Lock()
 }
 
@@ -122,13 +122,14 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
 
         logger.info(f"Collection complete! Inserted {inserted_jobs} job runs and {inserted_tests} test results")
         collection_status['progress'] = f'Complete! Saved {inserted_jobs} job runs and {inserted_tests} test results'
-        collection_status['last_run'] = datetime.now().isoformat()
         collection_status['error'] = None
+        collection_status['completed_at'] = datetime.now().isoformat()
 
     except Exception as e:
         logger.error(f"Collection failed: {e}", exc_info=True)
         collection_status['error'] = str(e)
         collection_status['progress'] = 'Failed'
+        collection_status['completed_at'] = None
     finally:
         logger.info("Collection thread finished")
         collection_status['running'] = False
@@ -210,7 +211,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             'running': collection_status['running'],
             'progress': collection_status['progress'],
             'error': collection_status['error'],
-            'last_run': collection_status['last_run']
+            'completed_at': collection_status['completed_at']
         })
 
     @app.route('/api/trigger-collection', methods=['POST'])
@@ -227,6 +228,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             collection_status['running'] = True
             collection_status['progress'] = 'Initializing...'
             collection_status['error'] = None
+            collection_status['completed_at'] = None
 
             # Start background thread
             thread = threading.Thread(
