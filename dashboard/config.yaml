@@ -19,10 +19,11 @@
 
 # Data collector configuration
 collector:
-  # Type of collector: "reportportal", "prow-gcs", "gcsweb", "sippy"
-  type: "reportportal"
+  # Type of collector: "reportportal", "prow_gcs", "gcsweb"
+  # Using prow_gcs for direct access to Prow logs (no auth needed, better error messages)
+  type: "prow_gcs"
 
-  # ReportPortal configuration (alternative data source)
+  # ReportPortal configuration (deprecated - will be removed)
   reportportal:
     url: "https://reportportal-openshift.apps.dno.ocp-hub.prod.psi.redhat.com"
     project: "prow"
