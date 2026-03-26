@@ -302,8 +302,8 @@ class ProwGCSCollector(BaseCollector):
 
         return results
 
-    def _find_junit_files(self, artifacts_url: str, max_depth: int = 3, current_depth: int = 0) -> List[str]:
-        """Find JUnit XML files in artifacts directory (recursive search up to 3 levels)"""
+    def _find_junit_files(self, artifacts_url: str, max_depth: int = 5, current_depth: int = 0) -> List[str]:
+        """Find JUnit XML files in artifacts directory (recursive search up to 5 levels)"""
         junit_files = []
 
         if current_depth >= max_depth:
