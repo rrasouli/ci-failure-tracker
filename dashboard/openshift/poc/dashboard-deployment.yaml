@@ -26,6 +26,11 @@ spec:
                 secretKeyRef:
                   name: reportportal-token
                   key: token
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: prow-api-token
+                  key: token
           volumeMounts:
             - name: data
               mountPath: /data

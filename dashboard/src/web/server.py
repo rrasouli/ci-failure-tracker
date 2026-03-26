@@ -56,6 +56,10 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
             from collectors.prow_mcp import ProwMCPCollector
             mcp_config = config['collector']['prow_mcp']
             collector = ProwMCPCollector(mcp_config)
+        elif collector_type == 'prow_gcs':
+            from collectors.prow_gcs import ProwGCSCollector
+            gcs_config = config['collector']['prow_gcs']
+            collector = ProwGCSCollector(gcs_config)
         else:
             error_msg = f'Unsupported collector type: {collector_type}'
             logger.error(error_msg)

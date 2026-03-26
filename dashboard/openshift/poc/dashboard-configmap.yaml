@@ -6,28 +6,26 @@ metadata:
     app: winc-dashboard-poc
 data:
   config.yaml: |
-    # POC Configuration - Uses prow-mcp-server for data collection
+    # POC Configuration - Direct GCS access (no MCP, no ReportPortal)
 
     collector:
-      type: "prow_mcp"
+      type: "prow_gcs"
 
-      prow_mcp:
-        server_url: "http://prow-mcp-server:3000"
+      prow_gcs:
+        # QE Private Prow (WINC jobs are here)
+        prow_url: "https://qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com"
+        gcs_url: "https://gcsweb-qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/qe-private-deck"
+
+        # Job name patterns (supports wildcards)
         job_names:
-          # 4.21 WINC jobs
-          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-aws-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-azure-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-gcp-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-nutanix-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-vsphere-ipi-ovn-winc-f7"
+          # 4.21 periodic WINC jobs
+          - "periodic-ci-openshift-openshift-tests-private-release-4.21-*-winc-*"
 
-          # 4.22 WINC jobs
-          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-aws-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-aws-upi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-azure-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-gcp-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-nutanix-ipi-ovn-winc-f7"
-          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-vsphere-ipi-ovn-winc-f7"
+          # 4.22 periodic WINC jobs
+          - "periodic-ci-openshift-openshift-tests-private-release-4.22-*-winc-*"
+
+          # Pull (PR) jobs for debugging
+          - "pull-ci-openshift-openshift-tests-private-*-winc-*"
 
         max_workers: 5
 
