@@ -124,6 +124,42 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
         inserted_jobs = db.insert_job_runs(job_runs)
         inserted_tests = db.insert_test_results(test_results)
 
+        # Update job_runs with actual test counts from test_results
+        logger.info("Updating job runs with test counts...")
+        db.execute_query("""
+            UPDATE job_runs
+            SET
+                total_tests = (
+                    SELECT COUNT(*) FROM test_results
+                    WHERE test_results.job_name = job_runs.job_name
+                    AND test_results.build_id = job_runs.build_id
+                ),
+                passed_tests = (
+                    SELECT COUNT(*) FROM test_results
+                    WHERE test_results.job_name = job_runs.job_name
+                    AND test_results.build_id = job_runs.build_id
+                    AND test_results.status = 'passed'
+                ),
+                failed_tests = (
+                    SELECT COUNT(*) FROM test_results
+                    WHERE test_results.job_name = job_runs.job_name
+                    AND test_results.build_id = job_runs.build_id
+                    AND test_results.status = 'failed'
+                ),
+                skipped_tests = (
+                    SELECT COUNT(*) FROM test_results
+                    WHERE test_results.job_name = job_runs.job_name
+                    AND test_results.build_id = job_runs.build_id
+                    AND test_results.status = 'skipped'
+                )
+            WHERE EXISTS (
+                SELECT 1 FROM test_results
+                WHERE test_results.job_name = job_runs.job_name
+                AND test_results.build_id = job_runs.build_id
+            )
+        """, commit=True)
+        logger.info("Job runs updated with test counts")
+
         # Close connection after write
         db.conn.close()
 
