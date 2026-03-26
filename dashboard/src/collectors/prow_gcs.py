@@ -127,17 +127,8 @@ class ProwGCSCollector(BaseCollector):
             import json
             content = response.text
 
-            # Debug: print first and last 100 chars
-            print(f"Response first 100 chars: {content[:100]}")
-            print(f"Response last 100 chars: {content[-100:]}")
-
-            # Remove "var allBuilds = " from start and ";" from end
-            json_str = content[17:].rstrip('; \n\r\t')
-
-            # Debug: print JSON string info
-            print(f"JSON string length: {len(json_str)}")
-            print(f"JSON string first 100 chars: {json_str[:100]}")
-            print(f"JSON string last 100 chars: {json_str[-100:]}")
+            # Remove "var allBuilds = " from start (16 chars) and ";" from end
+            json_str = content[16:].rstrip('; \n\r\t')
 
             data = json.loads(json_str)
 
