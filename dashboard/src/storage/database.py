@@ -298,14 +298,22 @@ class DashboardDatabase:
                 version,
                 COUNT(*) as total_runs,
                 SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) as passed_runs,
-                CAST(SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) * 100 as pass_rate
+                CAST(SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) * 100 as pass_rate,
+                (SELECT log_url FROM test_results tr2
+                 WHERE tr2.test_name = test_results.test_name
+                 AND tr2.version = test_results.version
+                 AND tr2.status = 'failed'
+                 AND tr2.log_url IS NOT NULL
+                 AND tr2.timestamp >= ?
+                 AND tr2.timestamp <= ?
+                 LIMIT 1) as sample_log_url
             FROM test_results
             WHERE timestamp >= ? AND timestamp <= ?
             AND status != 'skipped'
             AND test_name LIKE 'OCP-%'
         """
 
-        params = [start_date.isoformat(), end_date.isoformat()]
+        params = [start_date.isoformat(), end_date.isoformat(), start_date.isoformat(), end_date.isoformat()]
 
         if test_name:
             query += " AND test_name = ?"
