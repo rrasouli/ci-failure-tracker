@@ -324,20 +324,26 @@ class ProwGCSCollector(BaseCollector):
             xml_matches = re.findall(xml_pattern, html)
 
             for match in xml_matches:
+                match = match.strip()  # Remove whitespace
                 if match.startswith('http'):
                     junit_files.append(match)
                 elif match.startswith('/'):
                     junit_files.append(base_url + match)
                 else:
-                    junit_files.append(artifacts_url + match)
+                    # Relative path - remove leading ./ if present
+                    if match.startswith('./'):
+                        match = match[2:]
+                    junit_files.append(artifacts_url.rstrip('/') + '/' + match)
 
             # Find subdirectories (links ending with /)
             dir_pattern = r'href="([^"]+/)"'
             dir_matches = re.findall(dir_pattern, html)
 
             for match in dir_matches:
+                match = match.strip()  # Remove whitespace
+
                 # Skip parent directory link
-                if match == '../':
+                if match == '../' or match == '..':
                     continue
 
                 # Build subdirectory URL
@@ -346,7 +352,10 @@ class ProwGCSCollector(BaseCollector):
                 elif match.startswith('/'):
                     subdir_url = base_url + match
                 else:
-                    subdir_url = artifacts_url + match
+                    # Relative path - remove leading ./ if present
+                    if match.startswith('./'):
+                        match = match[2:]
+                    subdir_url = artifacts_url.rstrip('/') + '/' + match
 
                 # Recursively search subdirectory
                 sub_files = self._find_junit_files(subdir_url, max_depth, current_depth + 1)
