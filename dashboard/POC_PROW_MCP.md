@@ -73,93 +73,92 @@ collector:
     max_workers: 5
 ```
 
+## Architecture Fix
+
+**Status:** Fixed in fork https://github.com/rrasouli/prow-mcp-server
+
+The original prow-mcp-server had a build issue on OpenShift amd64 nodes:
+
+```
+WARNING: image platform (linux/arm64/v8) does not match the expected platform (linux/amd64)
+exec /bin/sh: exec format error
+```
+
+**Solution:**
+Updated `Containerfile.sse` to explicitly use amd64 platform:
+
+```dockerfile
+FROM --platform=linux/amd64 registry.access.redhat.com/ubi9/python-312
+```
+
+This fix is in the fork and used by POC deployment manifests.
+
 ## Deployment Guide
 
 ### Prerequisites
 
 1. OpenShift access (build10 cluster)
 2. `oc` CLI logged in
-3. prow-mcp-server container image (build or use existing)
+3. Fork with architecture fix: https://github.com/rrasouli/prow-mcp-server
 
-### Step 1: Create POC Namespace
+### Automated Deployment
+
+**All deployment manifests are ready in `openshift/poc/`**
+
+See complete deployment guide: [openshift/poc/README.md](openshift/poc/README.md)
+
+**Quick deploy:**
 
 ```bash
-# Create separate namespace for POC
+# Navigate to POC manifests
+cd dashboard/openshift/poc/
+
+# Create POC namespace
 oc new-project winc-dashboard-poc \
   --display-name="WINC Dashboard POC - Prow MCP" \
   --description="Testing prow-mcp-server integration"
-```
 
-### Step 2: Deploy prow-mcp-server
-
-First, deploy the MCP server that the dashboard will call:
-
-```bash
-# Option A: Deploy from container image (if available)
-oc new-app quay.io/your-org/prow-mcp-server:latest \
-  --name=prow-mcp-server
-
-# Option B: Build from source (if no image available)
-oc new-app https://github.com/redhat-community-ai-tools/prow-mcp-server.git \
-  --name=prow-mcp-server \
-  --strategy=docker
-
-# Expose as service (internal to namespace)
-oc expose deployment prow-mcp-server --port=3000 --name=prow-mcp-server
-
-# Check deployment
-oc get pods -l app=prow-mcp-server
-oc logs -f deployment/prow-mcp-server
-```
-
-### Step 3: Deploy Dashboard POC
-
-```bash
-# Create ReportPortal secret (for fallback)
+# Create secrets
 oc create secret generic reportportal-token \
   --from-literal=token="$REPORTPORTAL_API_TOKEN"
 
-# Create webhook secret
 oc create secret generic webhook-secret \
   --from-literal=WebHookSecretKey=$(openssl rand -hex 20)
 
-# Deploy dashboard resources
-oc apply -f openshift/
+# Deploy prow-mcp-server
+oc apply -f mcp-imagestream.yaml
+oc apply -f mcp-buildconfig.yaml
+oc apply -f mcp-service.yaml
+oc apply -f mcp-deployment.yaml
 
-# Start build from POC branch
-oc start-build winc-dashboard \
-  --from-git=https://github.com/redhat-community-ai-tools/ci-failure-tracker.git#poc-prow-mcp \
-  --context-dir=dashboard
+# Start MCP server build
+oc start-build prow-mcp-server
 
-# Wait for build
+# Wait for build (watch in separate terminal)
 oc get builds -w
 
+# Deploy dashboard POC
+oc apply -f dashboard-imagestream.yaml
+oc apply -f dashboard-buildconfig.yaml
+oc apply -f dashboard-configmap.yaml
+oc apply -f dashboard-pvc.yaml
+oc apply -f dashboard-service.yaml
+oc apply -f dashboard-route.yaml
+oc apply -f dashboard-deployment.yaml
+
+# Start dashboard build
+oc start-build winc-dashboard-poc
+
 # Get POC dashboard URL
-oc get route winc-dashboard -o jsonpath='{.spec.host}'
-# Result: winc-dashboard-winc-dashboard-poc.apps.build10.ci.devcluster.openshift.com
+oc get route winc-dashboard-poc -o jsonpath='{.spec.host}'
 ```
 
-### Step 4: Configure Dashboard to Use MCP
-
-Edit the ConfigMap to switch collector type:
-
-```bash
-# Edit config
-oc create configmap dashboard-config --from-file=config.yaml
-
-# Or patch deployment to use prow_mcp
-oc set env deployment/winc-dashboard COLLECTOR_TYPE=prow_mcp
-```
-
-**Or update config.yaml locally and rebuild:**
-
-```yaml
-collector:
-  type: "prow_mcp"  # Changed from "reportportal"
-
-  prow_mcp:
-    server_url: "http://prow-mcp-server:3000"  # Internal service
-```
+**Configuration is pre-set:**
+- Collector type: `prow_mcp`
+- MCP server URL: `http://prow-mcp-server:3000`
+- Job names: Same WINC periodic jobs as production
+- Branch: `poc-prow-mcp`
+- Fork: `rrasouli/prow-mcp-server` (with amd64 fix)
 
 ## Testing the POC
 
@@ -251,11 +250,17 @@ collector:
 
 POC is successful if:
 
-- [x] MCP server connects and returns data
-- [x] Test results are collected (OCP-* tests)
-- [x] Actual logs are fetched (not AI summaries)
-- [x] Collection time is reasonable (<5 minutes)
-- [x] Dashboard displays correctly
+- [x] Architecture issue fixed (amd64 forced in Containerfile.sse)
+- [x] Fork created with fix (rrasouli/prow-mcp-server)
+- [x] Deployment manifests created (openshift/poc/)
+- [x] ProwMCPCollector implemented
+- [x] ConfigMap with prow_mcp configuration
+- [ ] MCP server builds without errors
+- [ ] MCP server responds to health checks
+- [ ] Test results are collected (OCP-* tests)
+- [ ] Actual logs are fetched (not AI summaries)
+- [ ] Collection time is reasonable (<5 minutes)
+- [ ] Dashboard displays correctly
 - [ ] Data matches ReportPortal accuracy
 - [ ] MCP server is stable under load
 
