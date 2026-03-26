@@ -576,7 +576,7 @@
                         <th>Runs</th>
                         <th>Pass Rate</th>
                         <th style="width: 200px;">Performance</th>
-                        <th style="width: 80px;">Logs</th>
+                        <th style="width: 250px;">Latest Failure</th>
                     </tr>
                 </thead>
                 <tbody id="testRankings">
@@ -741,6 +741,73 @@
             }
         }
 
+        function extractErrorText(errorHtml) {
+            if (!errorHtml) return null;
+
+            // Strip HTML tags and extract clean text
+            const div = document.createElement('div');
+            div.innerHTML = errorHtml;
+
+            // Try to extract AI Summary or error message content
+            const pre = div.querySelector('pre');
+            if (pre) {
+                return pre.textContent.trim();
+            }
+
+            // Fallback: get all text and clean up
+            let text = div.textContent.trim();
+
+            // Remove table headers and links
+            text = text.replace(/🤖.*?AI Summary/g, '');
+            text = text.replace(/TFA-R.*?Similarity Score/g, '');
+            text = text.replace(/\[Result \d+\]/g, '');
+            text = text.replace(/\|\s*-+\s*\|/g, '');
+            text = text.replace(/https?:\/\/[^\s]+/g, '');
+
+            // Clean up whitespace
+            text = text.replace(/\n\s*\n/g, '\n').trim();
+
+            return text || null;
+        }
+
+        function formatError(errorText, maxLength = 100) {
+            if (!errorText) return '<span style="color: #ccc;">-</span>';
+
+            const clean = extractErrorText(errorText);
+            if (!clean) return '<span style="color: #ccc;">-</span>';
+
+            // Get first line or truncate
+            const firstLine = clean.split('\n')[0];
+            const truncated = firstLine.length > maxLength
+                ? firstLine.substring(0, maxLength) + '...'
+                : firstLine;
+
+            // Make it expandable if there's more content
+            if (clean.length > maxLength) {
+                const id = 'err-' + Math.random().toString(36).substr(2, 9);
+                return `
+                    <div style="font-size: 12px; font-family: monospace;">
+                        <div id="${id}-short" style="color: #dc2626;">
+                            ${truncated}
+                            <a href="#" onclick="document.getElementById('${id}-short').style.display='none';
+                                               document.getElementById('${id}-full').style.display='block';
+                                               return false;"
+                               style="color: #2563eb; text-decoration: none; margin-left: 5px;">[more]</a>
+                        </div>
+                        <div id="${id}-full" style="display: none; color: #dc2626; max-height: 200px; overflow-y: auto; white-space: pre-wrap;">
+                            ${clean}
+                            <a href="#" onclick="document.getElementById('${id}-short').style.display='block';
+                                               document.getElementById('${id}-full').style.display='none';
+                                               return false;"
+                               style="color: #2563eb; text-decoration: none; display: block; margin-top: 5px;">[less]</a>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `<span style="font-size: 12px; font-family: monospace; color: #dc2626;">${truncated}</span>`;
+        }
+
         async function refreshDashboard() {
             const days = parseInt(document.getElementById('timeRange').value);
             const version = document.getElementById('versionFilter').value;
@@ -881,12 +948,8 @@
                             <div class="label">${test.pass_rate.toFixed(1)}%</div>
                         </div>
                     </td>
-                    <td style="text-align: center;">
-                        ${test.sample_log_url ?
-                            `<a href="${test.sample_log_url}" target="_blank" rel="noopener noreferrer"
-                                style="color: #2563eb; text-decoration: none; font-size: 18px;"
-                                title="View test logs in ReportPortal">📋</a>`
-                            : '<span style="color: #ccc;">-</span>'}
+                    <td style="vertical-align: top; padding: 8px;">
+                        ${formatError(test.sample_error)}
                     </td>
                 </tr>
             `).join('');
