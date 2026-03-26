@@ -33,10 +33,24 @@ collector:
     # ========================================================================
     # CUSTOMIZE: Job name patterns to monitor for your team
     # {version} will be replaced with each version from tracking.versions
+    #
+    # Job types:
+    # - periodic-ci-* = Periodic/nightly jobs
+    # - pull-ci-* = Presubmit jobs (run on PRs)
+    # - branch-ci-* = Postsubmit jobs (run after merge)
     # ========================================================================
     job_patterns:
+      # Periodic (nightly) jobs
       - "periodic-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
       - "periodic-ci-openshift-windows-machine-config-operator-release-{version}-*"
+
+      # Presubmit (PR) jobs - for debugging PR failures
+      - "pull-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
+      - "pull-ci-openshift-windows-machine-config-operator-release-{version}-*-winc-*"
+      - "pull-ci-openshift-windows-machine-config-operator-*-e2e-*"
+
+      # Postsubmit jobs (after merge)
+      - "branch-ci-openshift-windows-machine-config-operator-*"
 
     # API settings
     page_size: 150

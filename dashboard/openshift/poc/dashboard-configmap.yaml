@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-config-poc
+  labels:
+    app: winc-dashboard-poc
+data:
+  config.yaml: |
+    # POC Configuration - Uses prow-mcp-server for data collection
+
+    collector:
+      type: "prow_mcp"
+
+      prow_mcp:
+        server_url: "http://prow-mcp-server:3000"
+        job_names:
+          # 4.21 WINC jobs
+          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-aws-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-azure-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-gcp-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-nutanix-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-vsphere-ipi-ovn-winc-f7"
+
+          # 4.22 WINC jobs
+          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-aws-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-aws-upi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-azure-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-gcp-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-nutanix-ipi-ovn-winc-f7"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-vsphere-ipi-ovn-winc-f7"
+
+        max_workers: 5
+
+      # Fallback to ReportPortal (not used in POC but kept for reference)
+      reportportal:
+        url: "https://reportportal-openshift.apps.dno.ocp-hub.prod.psi.redhat.com"
+        project: "prow"
+        job_patterns:
+          - "periodic-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
+          - "periodic-ci-openshift-windows-machine-config-operator-release-{version}-*"
+          - "pull-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
+          - "pull-ci-openshift-windows-machine-config-operator-release-{version}-*-winc-*"
+        page_size: 150
+        max_pages: 10
+        max_workers: 5
+
+    tracking:
+      versions:
+        - "4.21"
+        - "4.22"
+      platforms:
+        - "aws"
+        - "azure"
+        - "gcp"
+        - "nutanix"
+      lookback_days: 30
+      blocklist:
+        - "OCP-60944"
+        - "OCP-66352"
+
+    database:
+      path: "/data/dashboard.db"
+
+    web:
+      host: "0.0.0.0"
+      port: 8080
+      debug: false
+
+    schedule:
+      enabled: false
+      cron: "0 9 * * *"
