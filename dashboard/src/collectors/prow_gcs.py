@@ -302,67 +302,74 @@ class ProwGCSCollector(BaseCollector):
 
         return results
 
-    def _find_junit_files(self, artifacts_url: str, max_depth: int = 5, current_depth: int = 0) -> List[str]:
-        """Find JUnit XML files in artifacts directory (recursive search)"""
+    def _find_junit_files(self, artifacts_url: str, max_depth: int = 2, current_depth: int = 0) -> List[str]:
+        """Find JUnit XML files in artifacts directory (recursive search up to 2 levels)"""
         junit_files = []
 
         if current_depth >= max_depth:
             return junit_files
 
         try:
-            response = self.session.get(artifacts_url, timeout=10)
+            print(f"Searching for junit files at depth {current_depth}: {artifacts_url}")
+            response = self.session.get(artifacts_url, timeout=30)
             if response.status_code != 200:
+                print(f"Non-200 response ({response.status_code}) from {artifacts_url}")
                 return junit_files
 
             html = response.text
 
-            # Extract base URL from gcs_url
-            base_url = self.gcs_url.split('/gcs/')[0]
-
             # Find junit XML files in current directory
             xml_pattern = r'href="([^"]*junit[^"]*\.xml)"'
-            xml_matches = re.findall(xml_pattern, html)
+            xml_matches = re.findall(xml_pattern, html, re.IGNORECASE)
 
             for match in xml_matches:
-                match = match.strip()  # Remove whitespace
+                match = match.strip()
+                # Build full URL for junit file
                 if match.startswith('http'):
-                    junit_files.append(match)
+                    junit_url = match
                 elif match.startswith('/'):
-                    junit_files.append(base_url + match)
+                    # Absolute path - reconstruct from base
+                    base_host = artifacts_url.split('/gcs/')[0]
+                    junit_url = base_host + match
                 else:
-                    # Relative path - remove leading ./ if present
+                    # Relative path
                     if match.startswith('./'):
                         match = match[2:]
-                    junit_files.append(artifacts_url.rstrip('/') + '/' + match)
+                    junit_url = artifacts_url.rstrip('/') + '/' + match
 
-            # Find subdirectories (links ending with /)
-            dir_pattern = r'href="([^"]+/)"'
-            dir_matches = re.findall(dir_pattern, html)
+                print(f"Found junit file: {junit_url}")
+                junit_files.append(junit_url)
 
-            for match in dir_matches:
-                match = match.strip()  # Remove whitespace
+            # Only recurse if we haven't hit max depth
+            if current_depth < max_depth - 1:
+                # Find subdirectories (links ending with /)
+                dir_pattern = r'href="([^"]+/)"'
+                dir_matches = re.findall(dir_pattern, html)
 
-                # Skip parent directory link
-                if match == '../' or match == '..':
-                    continue
+                for match in dir_matches:
+                    match = match.strip()
 
-                # Build subdirectory URL
-                if match.startswith('http'):
-                    subdir_url = match
-                elif match.startswith('/'):
-                    subdir_url = base_url + match
-                else:
-                    # Relative path - remove leading ./ if present
-                    if match.startswith('./'):
-                        match = match[2:]
-                    subdir_url = artifacts_url.rstrip('/') + '/' + match
+                    # Skip parent directory and common non-test directories
+                    if match in ['../', '..', '../', 'metadata/']:
+                        continue
 
-                # Recursively search subdirectory
-                sub_files = self._find_junit_files(subdir_url, max_depth, current_depth + 1)
-                junit_files.extend(sub_files)
+                    # Build subdirectory URL
+                    if match.startswith('http'):
+                        subdir_url = match
+                    elif match.startswith('/'):
+                        base_host = artifacts_url.split('/gcs/')[0]
+                        subdir_url = base_host + match
+                    else:
+                        if match.startswith('./'):
+                            match = match[2:]
+                        subdir_url = artifacts_url.rstrip('/') + '/' + match
+
+                    # Recursively search subdirectory
+                    sub_files = self._find_junit_files(subdir_url, max_depth, current_depth + 1)
+                    junit_files.extend(sub_files)
 
         except Exception as e:
-            print(f"Error finding JUnit files in {artifacts_url}: {e}")
+            print(f"Error finding JUnit files at depth {current_depth} in {artifacts_url}: {e}")
 
         return junit_files
 
