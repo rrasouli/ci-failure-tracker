@@ -43,14 +43,19 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
 
         # Import collector modules
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-        from collectors.reportportal import ReportPortalCollector
 
-        # Initialize collector
+        # Initialize collector based on type
         collector_type = config['collector']['type']
         logger.info(f"Using collector type: {collector_type}")
+
         if collector_type == 'reportportal':
+            from collectors.reportportal import ReportPortalCollector
             rp_config = config['collector']['reportportal']
             collector = ReportPortalCollector(rp_config)
+        elif collector_type == 'prow_mcp':
+            from collectors.prow_mcp import ProwMCPCollector
+            mcp_config = config['collector']['prow_mcp']
+            collector = ProwMCPCollector(mcp_config)
         else:
             error_msg = f'Unsupported collector type: {collector_type}'
             logger.error(error_msg)

@@ -19,9 +19,9 @@
 
 # Data collector configuration
 collector:
-  # Type of collector: "reportportal", "prow_gcs", "gcsweb"
-  # Currently using ReportPortal (requires API token in env var)
-  # TODO: Switch to prow_gcs once GCS authentication is configured
+  # Type of collector: "reportportal", "prow_mcp", "prow_gcs", "gcsweb"
+  # Production uses ReportPortal
+  # POC uses prow_mcp (prow-mcp-server integration)
   type: "reportportal"
 
   # ReportPortal configuration
@@ -99,6 +99,33 @@ collector:
 
     # Parallel processing
     max_workers: 3
+
+  # prow_mcp configuration (POC - uses prow-mcp-server)
+  prow_mcp:
+    # MCP server URL (run prow-mcp-server separately)
+    # Default: http://localhost:3000
+    # For OpenShift POC: http://prow-mcp-server:3000 (in same namespace)
+    server_url: "http://localhost:3000"
+
+    # WINC job names (same as gcsweb)
+    job_names:
+      # 4.21 WINC jobs
+      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-aws-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-azure-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-gcp-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-nutanix-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nightly-vsphere-ipi-ovn-winc-f7"
+
+      # 4.22 WINC jobs
+      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-aws-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-aws-upi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-azure-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-gcp-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-nutanix-ipi-ovn-winc-f7"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nightly-vsphere-ipi-ovn-winc-f7"
+
+    # Parallel processing
+    max_workers: 5
 
 # Tracking configuration
 tracking:
