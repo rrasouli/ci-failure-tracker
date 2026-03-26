@@ -203,6 +203,74 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
 
         return render_template('dashboard.html')
 
+    @app.route('/logs')
+    def view_logs():
+        """Display test logs in a new page"""
+        log_content = request.args.get('content', '')
+        test_name = request.args.get('test', 'Test Log')
+
+        html = f'''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>{test_name} - Logs</title>
+            <style>
+                body {{
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 20px;
+                    background: #f8fafc;
+                }}
+                .container {{
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    overflow: hidden;
+                }}
+                .header {{
+                    background: #1e40af;
+                    color: white;
+                    padding: 20px;
+                    font-size: 18px;
+                    font-weight: 600;
+                }}
+                .content {{
+                    padding: 20px;
+                }}
+                pre {{
+                    background: #1e293b;
+                    color: #e2e8f0;
+                    padding: 20px;
+                    border-radius: 6px;
+                    overflow-x: auto;
+                    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                    font-size: 13px;
+                    line-height: 1.6;
+                    white-space: pre-wrap;
+                    word-wrap: break-word;
+                }}
+                .error {{
+                    color: #fca5a5;
+                }}
+                .info {{
+                    color: #93c5fd;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">{test_name}</div>
+                <div class="content">
+                    <pre>{log_content}</pre>
+                </div>
+            </div>
+        </body>
+        </html>
+        '''
+        return html
+
     @app.route('/api/collection-status')
     def api_collection_status():
         """Get current collection status"""

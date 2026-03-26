@@ -739,45 +739,23 @@
             }
         }
 
-        function formatError(errorText, logUrl) {
+        function formatError(errorText, testName, testDescription) {
             if (!errorText) return '<span style="color: #999; font-size: 12px;">No logs available</span>';
 
-            const id = 'log-' + Math.random().toString(36).substr(2, 9);
-            const needsExpand = errorText.length > 100 || errorText.includes('\n');
+            // Encode log text and metadata for URL parameters
+            const encodedLog = encodeURIComponent(errorText);
+            const encodedName = encodeURIComponent(testName || 'Test Log');
+            const title = testDescription ? `${testName} - ${testDescription}` : testName;
+            const encodedTitle = encodeURIComponent(title);
 
-            if (needsExpand) {
-                return `
-                    <div style="font-size: 12px;">
-                        <a href="#" id="${id}-toggle" onclick="
-                            var full = document.getElementById('${id}-full');
-                            var toggle = document.getElementById('${id}-toggle');
-                            if (full.style.display === 'none') {
-                                full.style.display = 'block';
-                                toggle.textContent = 'Hide logs';
-                            } else {
-                                full.style.display = 'none';
-                                toggle.textContent = 'View logs';
-                            }
-                            return false;"
-                           style="color: #1e40af; text-decoration: none; font-weight: 500;">
-                            View logs
-                        </a>
-                        <div id="${id}-full" style="display: none; margin-top: 8px; padding: 12px;
-                                  background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px;
-                                  max-height: 400px; overflow-y: auto;">
-                            <pre style="margin: 0; font-size: 11px; font-family: 'Consolas', 'Monaco', monospace;
-                                       white-space: pre-wrap; word-wrap: break-word; color: #334155;">${errorText}</pre>
-                        </div>
-                    </div>
-                `;
-            } else {
-                return `
-                    <div style="font-size: 11px; padding: 8px; background: #f8fafc; border: 1px solid #cbd5e1;
-                              border-radius: 4px;">
-                        <pre style="margin: 0; font-family: 'Consolas', 'Monaco', monospace; color: #334155;">${errorText}</pre>
-                    </div>
-                `;
-            }
+            return `
+                <a href="/logs?content=${encodedLog}&test=${encodedTitle}" target="_blank" rel="noopener noreferrer"
+                   style="display: inline-block; padding: 6px 12px; background: #dbeafe; color: #1e40af;
+                          text-decoration: none; border-radius: 4px; font-size: 12px; font-weight: 500;
+                          border: 1px solid #93c5fd;">
+                    View logs
+                </a>
+            `;
         }
 
         async function refreshDashboard() {
@@ -914,7 +892,7 @@
                     <td style="vertical-align: top;">
                         <div><strong>${test.test_name}</strong></div>
                         ${test.test_description ? `<div style="font-size:12px; color:#666; margin-top:2px;">${test.test_description}</div>` : ''}
-                        ${showLogs ? `<div style="margin-top:8px; padding-top:8px; border-top:1px solid #e5e7eb;">${formatError(test.sample_error)}</div>` : ''}
+                        ${showLogs ? `<div style="margin-top:8px; padding-top:8px; border-top:1px solid #e5e7eb;">${formatError(test.sample_error, test.test_name, test.test_description)}</div>` : ''}
                     </td>
                     <td style="vertical-align: top;">${test.version}</td>
                     <td style="vertical-align: top;">${test.total_runs}</td>
