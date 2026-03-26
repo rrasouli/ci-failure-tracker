@@ -175,6 +175,12 @@ class ProwGCSCollector(BaseCollector):
 
                 start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
 
+                # Make start_date and end_date timezone-aware if they aren't
+                if start_date.tzinfo is None:
+                    start_date = start_date.replace(tzinfo=timezone.utc)
+                if end_date.tzinfo is None:
+                    end_date = end_date.replace(tzinfo=timezone.utc)
+
                 # Filter by date range
                 if start_time < start_date or start_time > end_date:
                     continue
