@@ -318,8 +318,8 @@ class ProwGCSCollector(BaseCollector):
 
             html = response.text
 
-            # Find junit XML files in current directory
-            xml_pattern = r'href="([^"]*junit[^"]*\.xml)"'
+            # Find XML files in current directory (test results may not have "junit" in name)
+            xml_pattern = r'href="([^"]*\.xml)"'
             xml_matches = re.findall(xml_pattern, html, re.IGNORECASE)
 
             for match in xml_matches:
