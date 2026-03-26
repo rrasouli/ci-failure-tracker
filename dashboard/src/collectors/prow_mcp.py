@@ -42,8 +42,10 @@ class ProwMCPCollector(BaseCollector):
     def health_check(self) -> bool:
         """Check if MCP server is accessible"""
         try:
-            # Try to reach the MCP server
-            response = self.session.get(f"{self.mcp_server_url}/health", timeout=5)
+            # MCP server with SSE transport exposes /sse endpoint
+            # Just check if we can connect to the base URL
+            response = self.session.get(f"{self.mcp_server_url}/sse", timeout=5, stream=True)
+            # SSE endpoint returns 200 even without completing the stream
             return response.status_code == 200
         except Exception as e:
             print(f"Health check failed: {e}")
