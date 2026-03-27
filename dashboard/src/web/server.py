@@ -94,7 +94,9 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
                     expanded_patterns.append(pattern.replace('{version}', version))
         elif collector_type == 'prow_gcs':
             # prow_gcs uses wildcard patterns, no version expansion needed
-            expanded_patterns = config['collector']['prow_gcs'].get('job_patterns', [])
+            # Support both 'job_patterns' (new) and 'job_names' (legacy)
+            prow_gcs_config = config['collector']['prow_gcs']
+            expanded_patterns = prow_gcs_config.get('job_patterns') or prow_gcs_config.get('job_names', [])
         elif collector_type == 'prow_mcp':
             # prow_mcp uses exact job names from config
             expanded_patterns = None  # Will use job_names from collector config

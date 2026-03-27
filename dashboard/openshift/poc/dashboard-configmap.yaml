@@ -16,16 +16,21 @@ data:
         prow_url: "https://qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com"
         gcs_url: "https://gcsweb-qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com/gcs/qe-private-deck"
 
-        # Job name patterns (supports wildcards)
-        job_names:
-          # 4.21 periodic WINC jobs
+        # Job patterns (supports wildcards: * matches any characters)
+        job_patterns:
+          # Periodic (nightly) jobs
           - "periodic-ci-openshift-openshift-tests-private-release-4.21-*-winc-*"
-
-          # 4.22 periodic WINC jobs
           - "periodic-ci-openshift-openshift-tests-private-release-4.22-*-winc-*"
+          - "periodic-ci-openshift-windows-machine-config-operator-release-4.21-*"
+          - "periodic-ci-openshift-windows-machine-config-operator-release-4.22-*"
 
-          # Pull (PR) jobs for debugging
+          # Pull request (presubmit) jobs
           - "pull-ci-openshift-openshift-tests-private-*-winc-*"
+          - "pull-ci-openshift-windows-machine-config-operator-*-winc-*"
+
+          # Rehearse jobs (test changes to CI config)
+          - "rehearse-*-periodic-ci-openshift-openshift-tests-private-*-winc-*"
+          - "rehearse-*-periodic-ci-openshift-windows-machine-config-operator-*"
 
         max_workers: 5
 
@@ -51,6 +56,7 @@ data:
         - "azure"
         - "gcp"
         - "nutanix"
+        - "vsphere"
       lookback_days: 30
       blocklist:
         - "OCP-60944"
