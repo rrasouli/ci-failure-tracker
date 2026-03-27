@@ -292,10 +292,7 @@ class ProwGCSCollector(BaseCollector):
                 tests = self._parse_junit_xml(junit_url, job_run, test_names)
                 results.extend(tests)
 
-            # Fetch logs for failed tests
-            for test in results:
-                if test.status == TestStatus.FAILED:
-                    test.error_message = self._fetch_test_logs(job_run)
+            # JUnit XML already contains the test failure messages, no need to fetch build-log.txt
 
         except Exception as e:
             print(f"Error fetching test results for {job_run.job_name}/{job_run.build_id}: {e}")
@@ -349,7 +346,7 @@ class ProwGCSCollector(BaseCollector):
                 for match in dir_matches:
                     match = match.strip()
 
-                    # Skip parent directory and common non-test directories
+                    # Skip parent directory and non-test directories
                     if match in ['../', '..', '../', 'metadata/']:
                         continue
 
@@ -357,9 +354,17 @@ class ProwGCSCollector(BaseCollector):
                     if match.startswith('http'):
                         subdir_url = match
                     elif match.startswith('/'):
+                        # Absolute path - check if it's a child directory
                         base_host = artifacts_url.split('/gcs/')[0]
-                        subdir_url = base_host + match
+                        full_path = base_host + match
+                        # Only recurse if this is a subdirectory (longer path than current)
+                        if not full_path.rstrip('/').startswith(artifacts_url.rstrip('/')):
+                            continue
+                        if len(full_path.rstrip('/')) <= len(artifacts_url.rstrip('/')):
+                            continue
+                        subdir_url = full_path
                     else:
+                        # Relative path
                         if match.startswith('./'):
                             match = match[2:]
                         subdir_url = artifacts_url.rstrip('/') + '/' + match
@@ -410,13 +415,19 @@ class ProwGCSCollector(BaseCollector):
                     failure = testcase.find('failure')
                     skipped = testcase.find('skipped')
                     error = testcase.find('error')
+                    system_out = testcase.find('system-out')
 
                     if failure is not None:
                         status = TestStatus.FAILED
+                        # Include failure message + text + system-out (stdout)
                         error_msg = failure.get('message', '') + '\n' + (failure.text or '')
+                        if system_out is not None and system_out.text:
+                            error_msg += '\n\nTest Output:\n' + system_out.text
                     elif error is not None:
                         status = TestStatus.ERROR
                         error_msg = error.get('message', '') + '\n' + (error.text or '')
+                        if system_out is not None and system_out.text:
+                            error_msg += '\n\nTest Output:\n' + system_out.text
                     elif skipped is not None:
                         status = TestStatus.SKIPPED
                         error_msg = None

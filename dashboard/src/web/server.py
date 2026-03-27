@@ -81,16 +81,25 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
 
-        # Get job patterns
+        # Get job patterns based on collector type
         versions = config['tracking']['versions']
         platforms = config['tracking']['platforms']
-        job_patterns = config['collector']['reportportal']['job_patterns']
 
-        # Expand patterns
-        expanded_patterns = []
-        for pattern in job_patterns:
-            for version in versions:
-                expanded_patterns.append(pattern.replace('{version}', version))
+        if collector_type == 'reportportal':
+            job_patterns = config['collector']['reportportal']['job_patterns']
+            # Expand patterns with version placeholders
+            expanded_patterns = []
+            for pattern in job_patterns:
+                for version in versions:
+                    expanded_patterns.append(pattern.replace('{version}', version))
+        elif collector_type == 'prow_gcs':
+            # prow_gcs uses wildcard patterns, no version expansion needed
+            expanded_patterns = config['collector']['prow_gcs'].get('job_patterns', [])
+        elif collector_type == 'prow_mcp':
+            # prow_mcp uses exact job names from config
+            expanded_patterns = None  # Will use job_names from collector config
+        else:
+            expanded_patterns = []
 
         # Collect job runs
         logger.info("Collecting job runs...")
@@ -126,13 +135,14 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
 
         # Update job_runs with actual test counts from test_results
         logger.info("Updating job runs with test counts...")
-        db.execute_query("""
+        db.conn.execute("""
             UPDATE job_runs
             SET
                 total_tests = (
                     SELECT COUNT(*) FROM test_results
                     WHERE test_results.job_name = job_runs.job_name
                     AND test_results.build_id = job_runs.build_id
+                    AND test_results.status != 'skipped'
                 ),
                 passed_tests = (
                     SELECT COUNT(*) FROM test_results
@@ -157,7 +167,8 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
                 WHERE test_results.job_name = job_runs.job_name
                 AND test_results.build_id = job_runs.build_id
             )
-        """, commit=True)
+        """)
+        db.conn.commit()
         logger.info("Job runs updated with test counts")
 
         # Close connection after write
