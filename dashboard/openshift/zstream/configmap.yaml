@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-config-zstream
+  labels:
+    app: winc-dashboard-zstream
+data:
+  config.yaml: |
+    # Z-Stream Dashboard Configuration - OCP 4.17, 4.19
+
+    collector:
+      type: "reportportal"
+
+      reportportal:
+        url: "https://reportportal-openshift.apps.dno.ocp-hub.prod.psi.redhat.com"
+        project: "prow"
+
+        # Job patterns for z-stream versions
+        job_patterns:
+          # Periodic (nightly) jobs
+          - "periodic-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
+          - "periodic-ci-openshift-windows-machine-config-operator-release-{version}-*"
+
+          # Presubmit (PR) jobs
+          - "pull-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
+          - "pull-ci-openshift-windows-machine-config-operator-release-{version}-*-winc-*"
+          - "pull-ci-openshift-windows-machine-config-operator-*-e2e-*"
+
+          # Rehearse jobs
+          - "rehearse-*-periodic-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
+          - "rehearse-*-periodic-ci-openshift-windows-machine-config-operator-release-{version}-*"
+          - "rehearse-*-pull-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
+          - "rehearse-*-pull-ci-openshift-windows-machine-config-operator-*-winc-*"
+
+          # Postsubmit jobs
+          - "branch-ci-openshift-windows-machine-config-operator-*"
+
+        page_size: 150
+        max_pages: 10
+        max_workers: 5
+
+    tracking:
+      # Z-stream versions (can add 4.18 if needed)
+      versions:
+        - "4.17"
+        - "4.19"
+
+      platforms:
+        - "aws"
+        - "azure"
+        - "gcp"
+        - "nutanix"
+        - "vsphere"
+
+      lookback_days: 30
+
+      blocklist:
+        - "OCP-60944"
+        - "OCP-66352"
+
+    database:
+      path: "/data/dashboard.db"
+
+    web:
+      host: "0.0.0.0"
+      port: 8080
+      debug: false
+
+    schedule:
+      enabled: false
+      cron: "0 9 * * *"
