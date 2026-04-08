@@ -57,6 +57,23 @@ class ReportPortalCollector(BaseCollector):
         except Exception:
             return False
 
+    def _parse_timestamp(self, timestamp_value) -> datetime:
+        """
+        Parse timestamp from ReportPortal (handles both numeric milliseconds and ISO 8601 strings)
+
+        Args:
+            timestamp_value: Either numeric milliseconds or ISO 8601 string
+
+        Returns:
+            datetime object
+        """
+        if isinstance(timestamp_value, str):
+            # ISO 8601 format: '2026-04-06T06:16:18.581174Z'
+            return datetime.fromisoformat(timestamp_value.replace('Z', '+00:00'))
+        else:
+            # Numeric milliseconds
+            return datetime.fromtimestamp(int(timestamp_value) / 1000)
+
     def _map_status(self, rp_status: str) -> TestStatus:
         """Map ReportPortal status to normalized TestStatus"""
         status_map = {
@@ -119,12 +136,17 @@ class ReportPortalCollector(BaseCollector):
             failed = stats.get('failed', 0)
             skipped = stats.get('skipped', 0)
 
+            start_time = self._parse_timestamp(launch['startTime'])
+            end_time_value = launch.get('endTime', launch['startTime'])
+            end_time = self._parse_timestamp(end_time_value)
+            duration = (end_time - start_time).total_seconds()
+
             job_run = JobRun(
                 job_name=launch['name'],
                 build_id=str(launch['id']),
                 status=self._map_status(launch.get('status', 'UNKNOWN')),
-                timestamp=datetime.fromtimestamp(int(launch['startTime']) / 1000),
-                duration_seconds=(int(launch.get('endTime', launch['startTime'])) - int(launch['startTime'])) / 1000,
+                timestamp=start_time,
+                duration_seconds=duration,
                 version=metadata['version'],
                 platform=metadata['platform'],
                 total_tests=total,
@@ -327,11 +349,16 @@ class ReportPortalCollector(BaseCollector):
                     if item_status == TestStatus.FAILED:
                         error_message = self._fetch_logs_for_item(str(item['id']))
 
+                    item_start_time = self._parse_timestamp(item['startTime'])
+                    item_end_time_value = item.get('endTime', item['startTime'])
+                    item_end_time = self._parse_timestamp(item_end_time_value)
+                    item_duration = (item_end_time - item_start_time).total_seconds()
+
                     result = TestResult(
                         test_name=test_name,
                         status=item_status,
-                        timestamp=datetime.fromtimestamp(int(item['startTime']) / 1000),
-                        duration_seconds=(int(item.get('endTime', item['startTime'])) - int(item['startTime'])) / 1000,
+                        timestamp=item_start_time,
+                        duration_seconds=item_duration,
                         error_message=error_message,
                         job_name=launch['name'],
                         build_id=str(launch['id']),
