@@ -30,6 +30,11 @@ spec:
               name: reportportal-token
               key: token
               optional: true
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: prow-api-token
+              key: token
         volumeMounts:
         - name: data
           mountPath: /data
