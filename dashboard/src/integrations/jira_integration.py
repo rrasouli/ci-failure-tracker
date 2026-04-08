@@ -6,8 +6,10 @@ Allows creating Jira issues for failing tests with duplicate detection.
 
 import os
 import logging
+import requests
 from typing import Optional, Dict, List
 from dataclasses import dataclass
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +41,27 @@ class JiraIntegration:
     def _check_credentials(self) -> bool:
         """Check if Jira credentials are available"""
         # Check for Jira API token
-        jira_token = os.environ.get('JIRA_API_TOKEN')
+        self.jira_token = os.environ.get('JIRA_API_TOKEN')
+        self.jira_email = os.environ.get('JIRA_EMAIL', 'automation@redhat.com')  # Default email for API calls
 
-        if not jira_token:
+        if not self.jira_token:
             logger.warning("Jira integration disabled: Missing JIRA_API_TOKEN environment variable")
             return False
 
         return True
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Get authentication headers for Jira API"""
+        # Use Basic Auth with email + API token
+        auth_string = f"{self.jira_email}:{self.jira_token}"
+        auth_bytes = auth_string.encode('utf-8')
+        auth_b64 = base64.b64encode(auth_bytes).decode('utf-8')
+
+        return {
+            'Authorization': f'Basic {auth_b64}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
 
     def search_existing_issue(self, test_name: str, version: str, platform: str) -> Optional[Dict]:
         """
@@ -62,16 +78,33 @@ class JiraIntegration:
         if not self.enabled:
             return None
 
-        # Use Atlassian MCP to search for existing issues
         # JQL query to find issues with this test name
         jql = f'project = {self.config.project_key} AND summary ~ "{test_name}" AND resolution = Unresolved'
 
         try:
-            # This would use the Atlassian MCP server
-            # For now, return None to indicate no existing issue
-            # In production, this would call: mcp.atlassian.search_issues(jql)
             logger.info(f"Searching for existing Jira: {jql}")
-            return None
+
+            # Call Jira search API
+            search_url = f"{self.config.url}/rest/api/2/search"
+            response = requests.post(
+                search_url,
+                headers=self._get_headers(),
+                json={'jql': jql, 'maxResults': 1, 'fields': ['key', 'summary']}
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('issues'):
+                    issue = data['issues'][0]
+                    logger.info(f"Found existing Jira: {issue['key']}")
+                    return {'key': issue['key'], 'summary': issue['fields']['summary']}
+                else:
+                    logger.info("No existing Jira found")
+                    return None
+            else:
+                logger.error(f"Jira search failed: {response.status_code} - {response.text}")
+                return None
+
         except Exception as e:
             logger.error(f"Error searching Jira: {e}")
             return None
@@ -145,14 +178,40 @@ _This issue was automatically created by CI Failure Tracker_
 """
 
         try:
-            # This would use the Atlassian MCP server to create issue
-            # In production: mcp.atlassian.create_issue(...)
-            logger.info(f"Would create Jira: {summary}")
-            logger.debug(f"Description: {description}")
+            logger.info(f"Creating Jira: {summary}")
 
-            # For now, return a mock issue key
-            # In production, this would return the actual created issue key
-            return None
+            # Prepare issue data
+            issue_data = {
+                'fields': {
+                    'project': {'key': self.config.project_key},
+                    'summary': summary,
+                    'description': description,
+                    'issuetype': {'name': self.config.issue_type},
+                    'priority': {'name': self.config.priority}
+                }
+            }
+
+            # Add component if configured
+            if self.config.component:
+                issue_data['fields']['components'] = [{'name': self.config.component}]
+
+            # Call Jira create API
+            create_url = f"{self.config.url}/rest/api/2/issue"
+            response = requests.post(
+                create_url,
+                headers=self._get_headers(),
+                json=issue_data
+            )
+
+            if response.status_code in (200, 201):
+                data = response.json()
+                issue_key = data.get('key')
+                logger.info(f"Created Jira: {issue_key}")
+                return issue_key
+            else:
+                logger.error(f"Jira creation failed: {response.status_code} - {response.text}")
+                return None
+
         except Exception as e:
             logger.error(f"Error creating Jira: {e}")
             return None
