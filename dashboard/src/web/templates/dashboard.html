@@ -624,10 +624,11 @@
                         <th>Runs</th>
                         <th>Pass Rate</th>
                         <th style="width: 200px;">Performance</th>
+                        <th style="width: 80px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="testRankings">
-                    <tr><td colspan="5" class="loading">Loading...</td></tr>
+                    <tr><td colspan="6" class="loading">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -1142,7 +1143,7 @@
             const tbody = document.getElementById('testRankings');
 
             if (rankings.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#666;">No data available</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#666;">No data available</td></tr>';
                 return;
             }
 
@@ -1150,6 +1151,7 @@
                 // Only show logs for tests with failures (pass rate < 100%)
                 const showLogs = test.pass_rate < 100 && test.sample_error;
                 const lastRun = formatLastRun(test.last_run_timestamp);
+                const hasFailures = test.pass_rate < 100;
 
                 return `
                 <tr>
@@ -1167,6 +1169,19 @@
                             <div class="label">${test.pass_rate.toFixed(1)}%</div>
                         </div>
                         ${lastRun ? `<div style="font-size:12px; color:#999; margin-top:4px; text-align:right;">Last run: ${lastRun}</div>` : ''}
+                    </td>
+                    <td style="vertical-align: top; text-align: center;">
+                        ${hasFailures ? `<button
+                            onclick="createJiraIssue('${test.test_name}', '${test.test_description || ''}', '${test.version}', '${test.failed_platforms}', ${test.pass_rate}, ${test.total_runs}, ${test.failed_runs}, ${days})"
+                            class="jira-button"
+                            title="File Jira for ${test.test_name}"
+                            style="background: none; border: none; cursor: pointer; padding: 4px 8px;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="#0052CC" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V4.35C22 2.5 20.5 1 18.65 1h-7.12v1z"/>
+                                <path d="M12.47 22c0-2.4-1.97-4.35-4.35-4.35H6.35v-1.7c0-2.4-1.94-4.34-4.34-4.34v8.04C2 21.5 3.5 23 5.35 23h7.12v-1z"/>
+                                <path d="M11.53 11.53c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34v-8.04c0-1.85-1.5-3.35-3.35-3.35h-7.12v1z" opacity="0.6"/>
+                            </svg>
+                        </button>` : ''}
                     </td>
                 </tr>
             `}).join('');
@@ -1487,6 +1502,71 @@
                 });
             } catch (error) {
                 console.error('Failed to load metadata:', error);
+            }
+        }
+
+        async function createJiraIssue(testName, testDescription, version, failedPlatforms, passRate, totalRuns, failedRuns, days) {
+            // Get button element
+            const button = event.target.closest('button');
+            const originalContent = button.innerHTML;
+
+            try {
+                // Show loading state
+                button.disabled = true;
+                button.innerHTML = '<span style="font-size:12px;">Creating...</span>';
+
+                // Get error message from the test data (from hidden div)
+                const errorDiv = document.getElementById(`error-${testName}`);
+                const errorMessage = errorDiv ? errorDiv.textContent : 'No error message available';
+
+                // Get job URL from metadata
+                const metaDiv = document.getElementById(`meta-${testName}`);
+                const jobUrl = metaDiv ? metaDiv.textContent.split('|')[0] : '';
+
+                // Calculate failure rate
+                const failureRate = 100 - passRate;
+
+                // Create Jira issue
+                const response = await fetch('/api/jira/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        test_name: testName,
+                        test_description: testDescription,
+                        version: version,
+                        platform: failedPlatforms,
+                        error_message: errorMessage,
+                        job_url: jobUrl,
+                        failure_rate: failureRate,
+                        runs: totalRuns,
+                        failures: failedRuns
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to create Jira issue');
+                }
+
+                // Show success message
+                if (data.status === 'existing') {
+                    alert(`Existing Jira found:\n${data.issue_key}\n\n${data.issue_url}`);
+                } else if (data.status === 'created') {
+                    alert(`Jira created:\n${data.issue_key}\n\n${data.issue_url}`);
+                } else if (data.status === 'disabled') {
+                    alert('Jira integration is not enabled.\n\nPlease configure JIRA_API_TOKEN and JIRA_EMAIL environment variables.');
+                }
+
+            } catch (error) {
+                console.error('Error creating Jira:', error);
+                alert(`Failed to create Jira:\n${error.message}`);
+            } finally {
+                // Restore button
+                button.disabled = false;
+                button.innerHTML = originalContent;
             }
         }
 

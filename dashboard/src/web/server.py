@@ -556,6 +556,74 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         else:
             return jsonify({'error': 'No error found for this test/platform combination'}), 404
 
+    @app.route('/api/jira/create', methods=['POST'])
+    def api_create_jira():
+        """Create or find existing Jira issue for a test failure"""
+        from integrations import get_jira_integration
+
+        jira = get_jira_integration()
+        if not jira:
+            return jsonify({
+                'status': 'disabled',
+                'message': 'Jira integration not configured. Set JIRA_API_TOKEN and JIRA_EMAIL environment variables.'
+            })
+
+        data = request.json
+        if not data:
+            return jsonify({'error': 'Missing request data'}), 400
+
+        # Required fields
+        test_name = data.get('test_name')
+        version = data.get('version')
+        platform = data.get('platform')
+
+        if not all([test_name, version, platform]):
+            return jsonify({'error': 'Missing required fields: test_name, version, platform'}), 400
+
+        # Optional fields
+        test_description = data.get('test_description', '')
+        error_message = data.get('error_message', '')
+        job_url = data.get('job_url', '')
+        failure_rate = data.get('failure_rate', 0.0)
+        runs = data.get('runs', 0)
+        failures = data.get('failures', 0)
+
+        # Check for existing issue first
+        existing_issue = jira.search_existing_issue(test_name, version, platform)
+        if existing_issue:
+            issue_key = existing_issue.get('key')
+            issue_url = jira.get_issue_url(issue_key)
+            return jsonify({
+                'status': 'existing',
+                'issue_key': issue_key,
+                'issue_url': issue_url,
+                'message': f'Found existing issue: {issue_key}'
+            })
+
+        # Create new issue
+        issue_key = jira.create_issue(
+            test_name=test_name,
+            test_description=test_description,
+            version=version,
+            platform=platform,
+            error_message=error_message,
+            job_url=job_url,
+            failure_rate=failure_rate,
+            runs=runs,
+            failures=failures
+        )
+
+        if issue_key:
+            issue_url = jira.get_issue_url(issue_key)
+            return jsonify({
+                'status': 'created',
+                'issue_key': issue_key,
+                'issue_url': issue_url,
+                'message': f'Created new issue: {issue_key}'
+            })
+        else:
+            return jsonify({'error': 'Failed to create Jira issue'}), 500
+
     @app.teardown_appcontext
     def close_db(error):
         """Close database connection on app shutdown"""
