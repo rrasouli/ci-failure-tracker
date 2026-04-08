@@ -59,7 +59,14 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
         elif collector_type == 'prow_gcs':
             from collectors.prow_gcs import ProwGCSCollector
             gcs_config = config['collector']['prow_gcs']
-            collector = ProwGCSCollector(gcs_config)
+            try:
+                collector = ProwGCSCollector(gcs_config)
+            except Exception as e:
+                error_msg = f'Failed to initialize prow_gcs collector: {e}'
+                logger.error(error_msg)
+                collection_status['error'] = error_msg
+                collection_status['running'] = False
+                return
         else:
             error_msg = f'Unsupported collector type: {collector_type}'
             logger.error(error_msg)

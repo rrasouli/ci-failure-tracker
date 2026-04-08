@@ -81,10 +81,17 @@ class ProwGCSCollector(BaseCollector):
         """Check if Prow API is accessible"""
         try:
             url = f"{self.prow_url}/prowjobs.js?var=allBuilds"
+            logger.info(f"[prow_gcs] Health check URL: {url}")
             response = self.session.get(url, timeout=5)
+            logger.info(f"[prow_gcs] Health check response: status={response.status_code}")
+            if response.status_code != 200:
+                logger.error(f"[prow_gcs] Health check failed: HTTP {response.status_code}")
+                logger.error(f"[prow_gcs] Response: {response.text[:500]}")
             return response.status_code == 200
         except Exception as e:
-            logger.error(f"[prow_gcs] Health check failed: {e}")
+            logger.error(f"[prow_gcs] Health check failed with exception: {e}")
+            import traceback
+            logger.error(f"[prow_gcs] Traceback: {traceback.format_exc()}")
             return False
 
     def _extract_version_platform(self, job_name: str) -> tuple[str, str]:
