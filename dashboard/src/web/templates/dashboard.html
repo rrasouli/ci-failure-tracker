@@ -624,11 +624,10 @@
                         <th>Runs</th>
                         <th>Pass Rate</th>
                         <th style="width: 200px;">Performance</th>
-                        <th style="width: 80px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="testRankings">
-                    <tr><td colspan="6" class="loading">Loading...</td></tr>
+                    <tr><td colspan="5" class="loading">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -848,6 +847,18 @@
                             <span class="meta-value"><a href="${metadata.jobUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">${linkText}</a></span>
                         </div>
                         ` : ''}
+                        ${metadata.testName ? `
+                        <div class="meta-row" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                            <button onclick="fileJira()" id="jiraButton" style="background: #0052CC; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V4.35C22 2.5 20.5 1 18.65 1h-7.12v1z"/>
+                                    <path d="M12.47 22c0-2.4-1.97-4.35-4.35-4.35H6.35v-1.7c0-2.4-1.94-4.34-4.34-4.34v8.04C2 21.5 3.5 23 5.35 23h7.12v-1z"/>
+                                    <path d="M11.53 11.53c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34v-8.04c0-1.85-1.5-3.35-3.35-3.35h-7.12v1z" opacity="0.6"/>
+                                </svg>
+                                <span>File Jira Issue</span>
+                            </button>
+                        </div>
+                        ` : ''}
                     </div>
                 `;
             }
@@ -932,6 +943,58 @@
                             <pre>${escapedContent}</pre>
                         </div>
                     </div>
+                    ${metadata.testName ? `
+                    <script>
+                        async function fileJira() {
+                            const button = document.getElementById('jiraButton');
+                            const originalContent = button.innerHTML;
+
+                            try {
+                                button.disabled = true;
+                                button.innerHTML = '<span>Filing Jira...</span>';
+
+                                const errorMessage = ${JSON.stringify(logContent)};
+                                const response = await fetch('/api/jira/create', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({
+                                        test_name: ${JSON.stringify(metadata.testName)},
+                                        test_description: ${JSON.stringify(metadata.testDescription || '')},
+                                        version: ${JSON.stringify(metadata.version || '')},
+                                        platform: ${JSON.stringify(metadata.platform || '')},
+                                        error_message: errorMessage,
+                                        job_url: ${JSON.stringify(metadata.jobUrl || '')},
+                                        failure_rate: 100,
+                                        runs: 1,
+                                        failures: 1
+                                    })
+                                });
+
+                                const data = await response.json();
+
+                                if (!response.ok) {
+                                    throw new Error(data.error || 'Failed to create Jira');
+                                }
+
+                                if (data.status === 'existing' || data.status === 'created') {
+                                    window.open(data.issue_url, '_blank');
+                                    button.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#10b981" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="#10b981" stroke-width="2" fill="none"/><path d="M9 12l2 2 4-4" stroke="#10b981" stroke-width="2" fill="none"/></svg><span>' + data.issue_key + '</span>';
+                                    button.style.background = '#10b981';
+                                    button.onclick = () => window.open(data.issue_url, '_blank');
+                                    alert((data.status === 'created' ? 'Jira created: ' : 'Existing Jira found: ') + data.issue_key);
+                                } else if (data.status === 'disabled') {
+                                    alert('Jira integration is not enabled');
+                                    button.disabled = false;
+                                    button.innerHTML = originalContent;
+                                }
+                            } catch (error) {
+                                alert('Failed to create Jira: ' + error.message);
+                                button.disabled = false;
+                                button.innerHTML = originalContent;
+                            }
+                        }
+                    </script>
+                    ` : ''}
                 </body>
                 </html>
             `);
@@ -961,7 +1024,10 @@
                     platform: data.platform,
                     jobName: data.job_name,
                     buildId: data.build_id,
-                    jobUrl: data.job_url
+                    jobUrl: data.job_url,
+                    testName: testName,
+                    testDescription: testDescription,
+                    version: version
                 };
 
                 openLogWindow(data.error_message, title, metadata);
@@ -1139,7 +1205,7 @@
             const tbody = document.getElementById('testRankings');
 
             if (rankings.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#666;">No data available</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#666;">No data available</td></tr>';
                 return;
             }
 
@@ -1147,7 +1213,6 @@
                 // Only show logs for tests with failures (pass rate < 100%)
                 const showLogs = test.pass_rate < 100 && test.sample_error;
                 const lastRun = formatLastRun(test.last_run_timestamp);
-                const hasFailures = test.pass_rate < 100;
 
                 return `
                 <tr>
@@ -1165,19 +1230,6 @@
                             <div class="label">${test.pass_rate.toFixed(1)}%</div>
                         </div>
                         ${lastRun ? `<div style="font-size:12px; color:#999; margin-top:4px; text-align:right;">Last run: ${lastRun}</div>` : ''}
-                    </td>
-                    <td style="vertical-align: top; text-align: center;">
-                        ${hasFailures ? `<button
-                            onclick="createJiraIssue('${test.test_name}', '${test.test_description || ''}', '${test.version}', '${test.failed_platforms}', ${test.pass_rate}, ${test.total_runs}, ${test.failed_runs}, ${days})"
-                            class="jira-button"
-                            title="File Jira for ${test.test_name}"
-                            style="background: none; border: none; cursor: pointer; padding: 4px 8px;">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="#0052CC" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V4.35C22 2.5 20.5 1 18.65 1h-7.12v1z"/>
-                                <path d="M12.47 22c0-2.4-1.97-4.35-4.35-4.35H6.35v-1.7c0-2.4-1.94-4.34-4.34-4.34v8.04C2 21.5 3.5 23 5.35 23h7.12v-1z"/>
-                                <path d="M11.53 11.53c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34v-8.04c0-1.85-1.5-3.35-3.35-3.35h-7.12v1z" opacity="0.6"/>
-                            </svg>
-                        </button>` : ''}
                     </td>
                 </tr>
             `}).join('');
