@@ -941,6 +941,15 @@
                     </div>
                     ${metadata.testName ? `
                     <script>
+                        const jiraMetadata = {
+                            testName: ${JSON.stringify(metadata.testName)},
+                            testDescription: ${JSON.stringify(metadata.testDescription || '')},
+                            version: ${JSON.stringify(metadata.version || '')},
+                            platform: ${JSON.stringify(metadata.platform || '')},
+                            jobUrl: ${JSON.stringify(metadata.jobUrl || '')},
+                            errorMessage: ${JSON.stringify(logContent)}
+                        };
+
                         async function fileJira() {
                             const button = document.getElementById('jiraButton');
                             const originalContent = button.innerHTML;
@@ -949,17 +958,16 @@
                                 button.disabled = true;
                                 button.innerHTML = '<span>Filing Jira...</span>';
 
-                                const errorMessage = ${JSON.stringify(logContent)};
                                 const response = await fetch('/api/jira/create', {
                                     method: 'POST',
                                     headers: {'Content-Type': 'application/json'},
                                     body: JSON.stringify({
-                                        test_name: ${JSON.stringify(metadata.testName)},
-                                        test_description: ${JSON.stringify(metadata.testDescription || '')},
-                                        version: ${JSON.stringify(metadata.version || '')},
-                                        platform: ${JSON.stringify(metadata.platform || '')},
-                                        error_message: errorMessage,
-                                        job_url: ${JSON.stringify(metadata.jobUrl || '')},
+                                        test_name: jiraMetadata.testName,
+                                        test_description: jiraMetadata.testDescription,
+                                        version: jiraMetadata.version,
+                                        platform: jiraMetadata.platform,
+                                        error_message: jiraMetadata.errorMessage,
+                                        job_url: jiraMetadata.jobUrl,
                                         failure_rate: 100,
                                         runs: 1,
                                         failures: 1
