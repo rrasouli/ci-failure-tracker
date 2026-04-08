@@ -19,8 +19,14 @@ data:
         # Job patterns (supports wildcards: * matches any characters)
         job_patterns:
           # Periodic (nightly) jobs
+          - "periodic-ci-openshift-openshift-tests-private-release-4.18-*-winc-*"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.19-*-winc-*"
+          - "periodic-ci-openshift-openshift-tests-private-release-4.20-*-winc-*"
           - "periodic-ci-openshift-openshift-tests-private-release-4.21-*-winc-*"
           - "periodic-ci-openshift-openshift-tests-private-release-4.22-*-winc-*"
+          - "periodic-ci-openshift-windows-machine-config-operator-release-4.18-*"
+          - "periodic-ci-openshift-windows-machine-config-operator-release-4.19-*"
+          - "periodic-ci-openshift-windows-machine-config-operator-release-4.20-*"
           - "periodic-ci-openshift-windows-machine-config-operator-release-4.21-*"
           - "periodic-ci-openshift-windows-machine-config-operator-release-4.22-*"
 
@@ -51,6 +57,9 @@ data:
 
     tracking:
       versions:
+        - "4.18"
+        - "4.19"
+        - "4.20"
         - "4.21"
         - "4.22"
       platforms:
