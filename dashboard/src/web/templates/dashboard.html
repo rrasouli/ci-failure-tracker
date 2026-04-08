@@ -1557,11 +1557,29 @@
                     throw new Error(data.error || 'Failed to create Jira issue');
                 }
 
-                // Show success message
+                // Show success message and open Jira in new tab
                 if (data.status === 'existing') {
-                    alert(`Existing Jira found:\n${data.issue_key}\n\n${data.issue_url}`);
+                    window.open(data.issue_url, '_blank');
+                    alert(`Existing Jira found: ${data.issue_key}\n\nOpened in new tab.`);
+
+                    // Update button to show it exists
+                    button.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="#10b981" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="#10b981" stroke-width="2" fill="none"/>
+                        <path d="M9 12l2 2 4-4" stroke="#10b981" stroke-width="2" fill="none"/>
+                    </svg>`;
+                    button.title = `Jira exists: ${data.issue_key} - Click to open`;
+                    button.onclick = () => window.open(data.issue_url, '_blank');
                 } else if (data.status === 'created') {
-                    alert(`Jira created:\n${data.issue_key}\n\n${data.issue_url}`);
+                    window.open(data.issue_url, '_blank');
+                    alert(`Jira created: ${data.issue_key}\n\nOpened in new tab.`);
+
+                    // Update button to show issue key
+                    button.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="#10b981" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="#10b981" stroke-width="2" fill="none"/>
+                        <path d="M9 12l2 2 4-4" stroke="#10b981" stroke-width="2" fill="none"/>
+                    </svg>`;
+                    button.title = `Jira created: ${data.issue_key} - Click to open`;
+                    button.onclick = () => window.open(data.issue_url, '_blank');
                 } else if (data.status === 'disabled') {
                     alert('Jira integration is not enabled.\n\nPlease configure JIRA_API_TOKEN environment variable.');
                 }
