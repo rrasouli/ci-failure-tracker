@@ -233,6 +233,24 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     calculator = MetricsCalculator(db, blocklist=blocklist)
     report_generator = WeeklyReportGenerator(db, blocklist=blocklist)
 
+    def get_latest_version():
+        """
+        Get the latest version from database.
+        Returns the highest version number (e.g., "4.22" if both "4.21" and "4.22" exist)
+        """
+        query = "SELECT DISTINCT version FROM job_runs ORDER BY version DESC LIMIT 1"
+        result = db.execute_query(query)
+        return result[0]['version'] if result else None
+
+    def normalize_version(version):
+        """
+        Normalize version parameter: if empty/None, return latest version.
+        This prevents statistically invalid aggregation across different versions.
+        """
+        if not version or version == '':
+            return get_latest_version()
+        return version
+
     @app.route('/')
     def index():
         """Render main dashboard page"""
@@ -391,7 +409,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     def api_summary():
         """Get summary statistics"""
         days = request.args.get('days', 7, type=int)
-        version = request.args.get('version')
+        version = normalize_version(request.args.get('version'))
         platform = request.args.get('platform')
         stats = calculator.get_summary_stats(days=days, version=version, platform=platform)
         return jsonify(stats)
@@ -400,7 +418,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     def api_trend():
         """Get overall pass rate trend"""
         days = request.args.get('days', 30, type=int)
-        version = request.args.get('version')
+        version = normalize_version(request.args.get('version'))
         platform = request.args.get('platform')
 
         trend = calculator.get_overall_trend(
@@ -414,7 +432,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     def api_test_rankings():
         """Get test rankings (worst performers)"""
         days = request.args.get('days', 30, type=int)
-        version = request.args.get('version')
+        version = normalize_version(request.args.get('version'))
         platform = request.args.get('platform')
         limit = request.args.get('limit', 20, type=int)
 
@@ -437,7 +455,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     def api_platform_comparison():
         """Compare pass rates across platforms"""
         days = request.args.get('days', 30, type=int)
-        version = request.args.get('version')
+        version = normalize_version(request.args.get('version'))
 
         comparison = calculator.get_platform_comparison(
             days=days,
@@ -450,7 +468,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         """Get weekly platform breakdown report"""
         current_days = request.args.get('current_days', 7, type=int)
         previous_days = request.args.get('previous_days', 7, type=int)
-        version = request.args.get('version')
+        version = normalize_version(request.args.get('version'))
         top = request.args.get('top', 10, type=int)
 
         # Get platform comparison
@@ -477,7 +495,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         """Get test results for a specific platform"""
         platform = request.args.get('platform')
         days = request.args.get('days', 7, type=int)
-        version = request.args.get('version')
+        version = normalize_version(request.args.get('version'))
 
         if not platform:
             return jsonify({'error': 'Platform parameter is required'}), 400
@@ -499,7 +517,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     def api_test_error_by_platform():
         """Get latest error for a specific test on a specific platform"""
         test_name = request.args.get('test_name')
-        version = request.args.get('version')
+        version = normalize_version(request.args.get('version'))
         platform = request.args.get('platform')
         days = request.args.get('days', 30, type=int)
 
