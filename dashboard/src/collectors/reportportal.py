@@ -330,8 +330,8 @@ class ReportPortalCollector(BaseCollector):
                     result = TestResult(
                         test_name=test_name,
                         status=item_status,
-                        timestamp=datetime.fromtimestamp(item['startTime'] / 1000),
-                        duration_seconds=(item.get('endTime', item['startTime']) - item['startTime']) / 1000,
+                        timestamp=datetime.fromtimestamp(int(item['startTime']) / 1000),
+                        duration_seconds=(int(item.get('endTime', item['startTime'])) - int(item['startTime'])) / 1000,
                         error_message=error_message,
                         job_name=launch['name'],
                         build_id=str(launch['id']),
