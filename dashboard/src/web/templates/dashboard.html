@@ -1557,7 +1557,7 @@
                 } else if (data.status === 'created') {
                     alert(`Jira created:\n${data.issue_key}\n\n${data.issue_url}`);
                 } else if (data.status === 'disabled') {
-                    alert('Jira integration is not enabled.\n\nPlease configure JIRA_API_TOKEN and JIRA_EMAIL environment variables.');
+                    alert('Jira integration is not enabled.\n\nPlease configure JIRA_API_TOKEN environment variable.');
                 }
 
             } catch (error) {

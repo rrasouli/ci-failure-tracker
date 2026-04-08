@@ -38,13 +38,11 @@ class JiraIntegration:
 
     def _check_credentials(self) -> bool:
         """Check if Jira credentials are available"""
-        # Check for Jira token or credentials
-        # This would typically use OAuth or API token
+        # Check for Jira API token
         jira_token = os.environ.get('JIRA_API_TOKEN')
-        jira_email = os.environ.get('JIRA_EMAIL')
 
-        if not jira_token or not jira_email:
-            logger.warning("Jira integration disabled: Missing JIRA_API_TOKEN or JIRA_EMAIL environment variables")
+        if not jira_token:
+            logger.warning("Jira integration disabled: Missing JIRA_API_TOKEN environment variable")
             return False
 
         return True

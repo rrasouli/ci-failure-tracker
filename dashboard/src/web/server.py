@@ -565,7 +565,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         if not jira:
             return jsonify({
                 'status': 'disabled',
-                'message': 'Jira integration not configured. Set JIRA_API_TOKEN and JIRA_EMAIL environment variables.'
+                'message': 'Jira integration not configured. Set JIRA_API_TOKEN environment variable.'
             })
 
         data = request.json
