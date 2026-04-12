@@ -1273,7 +1273,10 @@
                 return;
             }
 
-            const html = Object.entries(platforms).sort().map(([platform, data]) => {
+            const html = Object.entries(platforms)
+                .filter(([platform, data]) => data.current_runs > 0)
+                .sort()
+                .map(([platform, data]) => {
                 const delta = data.delta;
                 let statusClass = 'status-ok';
                 let deltaClass = 'neutral';
