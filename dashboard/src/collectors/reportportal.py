@@ -418,8 +418,8 @@ class ReportPortalCollector(BaseCollector):
                     after_id = raw_name.split(test_id, 1)[-1]
                     description = after_id.strip(':- \t')
 
-            # Remove common prefixes
-            description = re.sub(r'^Windows_Containers\s+', '', description)
+            # Remove common prefixes (with space or hyphen)
+            description = re.sub(r'^Windows_Containers[-\s]+', '', description)
             description = re.sub(r'^Smokerun-[^\s]+\s+', '', description)
 
             # Remove [wmco] or similar prefixes at the start
