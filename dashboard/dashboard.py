@@ -148,9 +148,9 @@ def collect(ctx, days, dry_run):
         for pattern in job_patterns:
             for version in versions:
                 expanded_patterns.append(pattern.replace('{version}', version))
-    elif collector_type in ['prow-gcs', 'gcsweb']:
+    elif collector_type in ['prow-gcs', 'prow_gcs', 'gcsweb']:
         # Prow GCS and gcsweb use exact job names
-        key = 'prow_gcs' if collector_type == 'prow-gcs' else 'gcsweb'
+        key = 'prow_gcs' if collector_type in ['prow-gcs', 'prow_gcs'] else 'gcsweb'
         expanded_patterns = config['collector'][key]['job_names']
     else:
         console.print(f"[red]Error: Unknown collector type: {collector_type}[/red]")
