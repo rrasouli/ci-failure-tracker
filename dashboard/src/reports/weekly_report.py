@@ -84,12 +84,38 @@ class WeeklyReportGenerator:
 
             delta = current_avg - previous_avg
 
+            # Get test-level statistics for current and previous periods
+            current_test_data = self.db.get_test_pass_rates(
+                current_start, current_end, version=version, platform=platform,
+                blocklist=self.calculator.blocklist
+            )
+            previous_test_data = self.db.get_test_pass_rates(
+                previous_start, previous_end, version=version, platform=platform,
+                blocklist=self.calculator.blocklist
+            )
+
+            # Count current tests
+            current_total_tests = len(current_test_data)
+            current_passed_tests = sum(1 for test in current_test_data if test['pass_rate'] == 100)
+            current_failed_tests = current_total_tests - current_passed_tests
+
+            # Count previous tests
+            previous_total_tests = len(previous_test_data)
+            previous_passed_tests = sum(1 for test in previous_test_data if test['pass_rate'] == 100)
+            previous_failed_tests = previous_total_tests - previous_passed_tests
+
             comparisons[platform] = {
                 'current_pass_rate': round(current_avg, 1),
                 'previous_pass_rate': round(previous_avg, 1),
                 'delta': round(delta, 1),
                 'current_runs': current_platforms[platform]['total_runs'],
-                'previous_runs': previous_platforms[platform]['total_runs']
+                'previous_runs': previous_platforms[platform]['total_runs'],
+                'current_total_tests': current_total_tests,
+                'current_passed_tests': current_passed_tests,
+                'current_failed_tests': current_failed_tests,
+                'previous_total_tests': previous_total_tests,
+                'previous_passed_tests': previous_passed_tests,
+                'previous_failed_tests': previous_failed_tests
             }
 
         return {
@@ -151,7 +177,13 @@ class WeeklyReportGenerator:
             else:
                 delta_str = "→0%"
 
-            lines.append(f"{status} {platform.capitalize():10s} {prev:.0f}% → {curr:.0f}%   {delta_str}")
+            # Test counts
+            curr_tests = data['current_total_tests']
+            curr_passed = data['current_passed_tests']
+            curr_failed = data['current_failed_tests']
+            test_str = f"({curr_tests} tests: {curr_passed} passed, {curr_failed} failed)"
+
+            lines.append(f"{status} {platform.capitalize():10s} {prev:.0f}% → {curr:.0f}%   {delta_str}   {test_str}")
 
         lines.append("")
 
@@ -208,9 +240,9 @@ class WeeklyReportGenerator:
         lines.append("=" * 70)
         lines.append("")
         lines.append("PLATFORM PASS RATES (Week-over-Week)")
-        lines.append("-" * 70)
-        lines.append(f"{'Platform':<12} {'Previous':>8} {'Current':>8} {'Change':>10} {'Trend':>10}")
-        lines.append("-" * 70)
+        lines.append("-" * 100)
+        lines.append(f"{'Platform':<12} {'Previous':>8} {'Current':>8} {'Change':>10} {'Trend':>10} {'Tests':>30}")
+        lines.append("-" * 100)
 
         # Platform breakdown
         for platform, data in sorted(comparison['platforms'].items()):
@@ -229,8 +261,14 @@ class WeeklyReportGenerator:
                 delta_str = "0%"
                 trend = "STABLE"
 
+            # Test counts
+            curr_tests = data['current_total_tests']
+            curr_passed = data['current_passed_tests']
+            curr_failed = data['current_failed_tests']
+            test_str = f"{curr_tests}: {curr_passed} pass, {curr_failed} fail"
+
             lines.append(
-                f"{platform.capitalize():<12} {prev:>7.1f}% {curr:>7.1f}% {delta_str:>10} {trend:>10}"
+                f"{platform.capitalize():<12} {prev:>7.1f}% {curr:>7.1f}% {delta_str:>10} {trend:>10} {test_str:>30}"
             )
 
         lines.append("")
