@@ -338,14 +338,15 @@ class ReportPortalCollector(BaseCollector):
                     break
 
                 for item in content:
-                    test_name, test_description = self._extract_test_name(item['name'])
+                    # Only include Windows_Containers tests (check raw name before extraction)
+                    raw_name = item['name']
+                    if 'Windows_Containers' not in raw_name:
+                        continue
+
+                    test_name, test_description = self._extract_test_name(raw_name)
 
                     # Filter by test name if specified
                     if test_names and test_name not in test_names:
-                        continue
-
-                    # Only include Windows_Containers tests
-                    if not test_description or not test_description.startswith('Windows_Containers'):
                         continue
 
                     # Fetch logs for failed tests only
