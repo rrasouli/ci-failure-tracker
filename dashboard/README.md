@@ -66,6 +66,7 @@ collector:
 tracking:
   versions: ["4.21", "4.22"]
   platforms: ["aws", "azure", "gcp", "nutanix"]
+  test_suite_filter: "Windows_Containers"  # Filter to specific test suite
   lookback_days: 30
   blocklist:
     - "OCP-60944"  # Removed from suite
@@ -162,6 +163,34 @@ REST APIs for custom integrations:
 - `POST /api/trigger-collection` - Start data collection
 - `GET /api/collection-status` - Check collection progress
 - `GET /logs?content=<log>&test=<name>` - View logs page
+
+### Test Suite Filtering
+
+**New in April 2026**: The dashboard now supports filtering to specific test suites, making it reusable across teams.
+
+Configure in `config.yaml`:
+
+```yaml
+tracking:
+  test_suite_filter: "Windows_Containers"  # Filter to specific test suite
+```
+
+**How it works:**
+- Checks if the filter string appears in the raw test name/description
+- Applied before any test name processing
+- Empty string or omit to collect all tests
+
+**Examples for different teams:**
+
+| Team                  | Filter Value           | What it collects                              |
+|-----------------------|------------------------|----------------------------------------------|
+| Windows Containers    | `"Windows_Containers"` | Only WINC tests                              |
+| Networking            | `"Networking"`         | Only Networking tests                        |
+| Storage               | `"Storage"`            | Only Storage tests                           |
+| Security & Compliance | `"Security"`           | Security-related tests                       |
+| All teams             | `""`                   | All tests (no filter)                        |
+
+This prevents unrelated test suites (like Security_and_Compliance, File Integrity) from appearing in your dashboard.
 
 ## Database Schema
 
