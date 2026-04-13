@@ -154,12 +154,9 @@ class ProwGCSCollector(BaseCollector):
                 if bracket_match:
                     description = bracket_match.group(1)
                 else:
-                    # No bracket pattern found, use everything after first colon
-                    if ':' in raw_name:
-                        parts = raw_name.split(':', 3)  # Split on first 3 colons
-                        description = parts[-1] if len(parts) > 3 else raw_name
-                    else:
-                        description = raw_name
+                    # No bracket pattern found, extract after OCP ID
+                    after_id = raw_name.split(test_id, 1)[-1]
+                    description = after_id.strip(':- \t')
 
             # Remove test suite prefix (if configured)
             test_suite_filter = self.config.get('test_suite_filter', '')
