@@ -161,8 +161,10 @@ class ProwGCSCollector(BaseCollector):
                     else:
                         description = raw_name
 
-            # Remove common prefixes (with space or hyphen)
-            description = re.sub(r'^Windows_Containers[-\s]+', '', description)
+            # Remove test suite prefix (if configured)
+            test_suite_filter = self.config.get('test_suite_filter', '')
+            if test_suite_filter:
+                description = re.sub(rf'^{re.escape(test_suite_filter)}[-\s]+', '', description)
             description = re.sub(r'^Smokerun-[^\s]+\s+', '', description)
 
             # Remove [wmco] or similar prefixes at the start
