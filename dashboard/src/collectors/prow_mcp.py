@@ -271,8 +271,9 @@ class ProwMCPCollector(BaseCollector):
                 test_name = test.get('name', 'unknown')
                 test_description = test.get('description', '')
 
-                # Only include Windows_Containers tests (check description from MCP response)
-                if 'Windows_Containers' not in test_description:
+                # Only include tests matching test_suite_filter (check description from MCP response)
+                test_filter = self.config.get('test_suite_filter', '')
+                if test_filter and test_filter not in test_description:
                     continue
 
                 # Filter by test name if specified

@@ -72,14 +72,20 @@ def get_collector(config: dict):
     """Create data collector based on configuration"""
     collector_type = config['collector']['type']
 
+    # Add test_suite_filter from tracking config to collector config
+    test_suite_filter = config.get('tracking', {}).get('test_suite_filter', '')
+
     if collector_type == 'reportportal':
-        rp_config = config['collector']['reportportal']
+        rp_config = config['collector']['reportportal'].copy()
+        rp_config['test_suite_filter'] = test_suite_filter
         return ReportPortalCollector(rp_config)
     elif collector_type == 'prow-gcs':
-        prow_config = config['collector']['prow_gcs']
+        prow_config = config['collector']['prow_gcs'].copy()
+        prow_config['test_suite_filter'] = test_suite_filter
         return ProwGCSCollector(prow_config)
     elif collector_type == 'gcsweb':
-        gcsweb_config = config['collector']['gcsweb']
+        gcsweb_config = config['collector']['gcsweb'].copy()
+        gcsweb_config['test_suite_filter'] = test_suite_filter
         return GCSWebCollector(gcsweb_config)
     else:
         console.print(f"[red]Error: Unknown collector type: {collector_type}[/red]")

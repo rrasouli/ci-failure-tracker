@@ -184,6 +184,20 @@ tracking:
     - "nutanix"
     - "vsphere"
 
+  # ========================================================================
+  # CUSTOMIZE: Test suite filter - only collect tests matching this pattern
+  #
+  # Examples for different teams:
+  #   - Windows Containers: "Windows_Containers"
+  #   - Networking:         "Networking"
+  #   - Storage:            "Storage"
+  #   - Leave empty to collect all tests (no filter)
+  #
+  # The filter checks if this string appears in the raw test name/description
+  # before any processing. This helps exclude unrelated test suites.
+  # ========================================================================
+  test_suite_filter: "Windows_Containers"
+
   # How many days to look back when collecting data
   lookback_days: 30
 

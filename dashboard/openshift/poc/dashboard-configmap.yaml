@@ -68,6 +68,7 @@ data:
         - "gcp"
         - "nutanix"
         - "vsphere"
+      test_suite_filter: "Windows_Containers"
       lookback_days: 30
       blocklist:
         - "OCP-60944"

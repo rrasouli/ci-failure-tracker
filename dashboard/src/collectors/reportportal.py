@@ -338,9 +338,10 @@ class ReportPortalCollector(BaseCollector):
                     break
 
                 for item in content:
-                    # Only include Windows_Containers tests (check raw name before extraction)
+                    # Only include tests matching test_suite_filter (check raw name before extraction)
                     raw_name = item['name']
-                    if 'Windows_Containers' not in raw_name:
+                    test_filter = self.config.get('test_suite_filter', '')
+                    if test_filter and test_filter not in raw_name:
                         continue
 
                     test_name, test_description = self._extract_test_name(raw_name)
