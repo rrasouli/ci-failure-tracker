@@ -209,7 +209,7 @@ def collect(ctx, days, dry_run):
             job_run.total_tests = counts['total']
             job_run.passed_tests = counts['passed']
             job_run.failed_tests = counts['failed']
-            job_run.pass_rate = (counts['passed'] / counts['total'] * 100) if counts['total'] > 0 else 0
+            # pass_rate is a calculated property, no need to set it
 
     if dry_run:
         # Show sample data
