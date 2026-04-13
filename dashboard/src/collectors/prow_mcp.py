@@ -269,6 +269,11 @@ class ProwMCPCollector(BaseCollector):
 
             for test in test_list:
                 test_name = test.get('name', 'unknown')
+                test_description = test.get('description', '')
+
+                # Only include Windows_Containers tests (check description from MCP response)
+                if 'Windows_Containers' not in test_description:
+                    continue
 
                 # Filter by test name if specified
                 if test_names and test_name not in test_names:
@@ -276,11 +281,6 @@ class ProwMCPCollector(BaseCollector):
 
                 # Only include OCP-* tests (match dashboard behavior)
                 if not test_name.startswith('OCP-'):
-                    continue
-
-                # Only include Windows_Containers tests
-                test_description = test.get('description', '')
-                if not test_description or not test_description.startswith('Windows_Containers'):
                     continue
 
                 # Get logs for failed tests

@@ -475,6 +475,10 @@ class ProwGCSCollector(BaseCollector):
                 for testcase in testsuite.findall('testcase'):
                     raw_test_name = testcase.get('name', 'unknown')
 
+                    # Only include Windows_Containers tests (check raw name before extraction)
+                    if 'Windows_Containers' not in raw_test_name:
+                        continue
+
                     # Extract clean test name (OCP-XXXXX) and description
                     test_name, test_description = self._extract_test_name(raw_test_name)
 
@@ -484,10 +488,6 @@ class ProwGCSCollector(BaseCollector):
 
                     # Only include OCP-* tests (filter out infrastructure)
                     if not test_name.startswith('OCP-'):
-                        continue
-
-                    # Only include Windows_Containers tests
-                    if not test_description or not test_description.startswith('Windows_Containers'):
                         continue
 
                     # Determine status

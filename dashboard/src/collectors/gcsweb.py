@@ -214,6 +214,11 @@ class GCSWebCollector(BaseCollector):
         for testsuite in junit_root.findall('.//testsuite'):
             for testcase in testsuite.findall('testcase'):
                 name = testcase.get('name', 'unknown')
+
+                # Only include Windows_Containers tests (check raw name before extraction)
+                if 'Windows_Containers' not in name:
+                    continue
+
                 time = float(testcase.get('time', 0))
 
                 # Determine status
@@ -236,10 +241,6 @@ class GCSWebCollector(BaseCollector):
 
                 # Extract test name and description (look for OCP-XXXXX)
                 test_name, test_description = self._extract_test_name(name)
-
-                # Only include Windows_Containers tests
-                if not test_description or not test_description.startswith('Windows_Containers'):
-                    continue
 
                 result = TestResult(
                     test_name=test_name,
