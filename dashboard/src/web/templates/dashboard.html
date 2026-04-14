@@ -587,7 +587,9 @@
                 <h3>Test Pass Rate</h3>
                 <div class="value" id="avgPassRate">--%</div>
                 <div style="margin-top:10px; font-size:14px; color:#666;">
-                    <span id="testBreakdown">-- tests: -- passed, -- failed</span>
+                    <span id="testBreakdown">-- executions: -- passed, -- failed</span>
+                    <br>
+                    <span id="uniqueTests">-- unique tests</span>
                 </div>
                 <div class="trend" id="trendIndicator">Loading...</div>
             </div>
@@ -1090,7 +1092,8 @@
                 // Update summary cards
                 document.getElementById('avgPassRate').textContent = `${summary.avg_pass_rate}%`;
                 document.getElementById('testBreakdown').textContent =
-                    `${summary.total_tests} tests: ${summary.passed_tests} passed, ${summary.failed_tests} failed`;
+                    `${summary.passed_tests + summary.failed_tests} executions: ${summary.passed_tests} passed, ${summary.failed_tests} failed`;
+                document.getElementById('uniqueTests').textContent = `${summary.total_tests} unique tests`;
                 document.getElementById('dateRange').textContent = summary.date_range;
                 document.getElementById('trendText').textContent = summary.trend.charAt(0).toUpperCase() + summary.trend.slice(1);
 

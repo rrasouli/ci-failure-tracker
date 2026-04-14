@@ -220,9 +220,9 @@ class MetricsCalculator:
         Returns:
             Dictionary with summary statistics including:
             - total_tests: Total number of unique tests
-            - passed_tests: Number of tests with 100% pass rate
-            - failed_tests: Number of tests with < 100% pass rate
-            - avg_pass_rate: Percentage of tests passing (passed_tests/total_tests * 100)
+            - passed_tests: Total number of test executions that passed
+            - failed_tests: Total number of test executions that failed
+            - avg_pass_rate: Percentage of test executions that passed
             - trend: 'improving', 'declining', or 'stable'
         """
         end_date = datetime.now()
@@ -240,13 +240,14 @@ class MetricsCalculator:
                 'trend': 'stable'
             }
 
-        # Count tests by pass rate
+        # Count test executions (not just unique tests)
         total_tests = len(test_data)
-        passed_tests = sum(1 for test in test_data if test['pass_rate'] == 100)
-        failed_tests = total_tests - passed_tests
+        total_executions = sum(test['total_runs'] for test in test_data)
+        passed_executions = sum(test['passed_runs'] for test in test_data)
+        failed_executions = total_executions - passed_executions
 
-        # Calculate overall pass rate
-        avg_pass_rate = (passed_tests / total_tests * 100) if total_tests > 0 else 0
+        # Calculate overall pass rate based on executions
+        avg_pass_rate = (passed_executions / total_executions * 100) if total_executions > 0 else 0
 
         # Calculate trend based on daily pass rates
         daily_data = self.db.get_daily_pass_rates(start_date, end_date, version=version, platform=platform)
@@ -271,8 +272,8 @@ class MetricsCalculator:
 
         return {
             'total_tests': total_tests,
-            'passed_tests': passed_tests,
-            'failed_tests': failed_tests,
+            'passed_tests': passed_executions,
+            'failed_tests': failed_executions,
             'avg_pass_rate': round(avg_pass_rate, 2),
             'trend': trend,
             'date_range': f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
