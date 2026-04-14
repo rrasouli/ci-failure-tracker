@@ -12,3 +12,6 @@ pyyaml>=6.0
 # CLI & Terminal
 rich>=13.0.0
 click>=8.1.0
+
+# AI / ML
+anthropic>=0.34.0

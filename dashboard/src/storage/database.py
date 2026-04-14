@@ -121,6 +121,31 @@ class DashboardDatabase:
             )
         """)
 
+        # AI analyses table - stores AI-generated failure analyses
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_analyses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                test_name TEXT NOT NULL,
+                version TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                analysis_date DATETIME NOT NULL,
+                root_cause TEXT,
+                component TEXT,
+                confidence INTEGER,
+                failure_type TEXT,
+                platform_specific INTEGER,
+                affected_platforms TEXT,
+                evidence TEXT,
+                suggested_action TEXT,
+                issue_title TEXT,
+                issue_description TEXT,
+                analysis_mode TEXT,
+                cost REAL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(test_name, version, platform, analysis_date)
+            )
+        """)
+
         # Create indexes for faster queries
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_runs_timestamp ON job_runs(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_runs_version ON job_runs(version)")
@@ -128,6 +153,7 @@ class DashboardDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_test_results_test_name ON test_results(test_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_metrics_date ON daily_metrics(date)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_test_metrics_test_name ON test_metrics(test_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analyses_test_name ON ai_analyses(test_name)")
 
         self.conn.commit()
 
@@ -448,6 +474,134 @@ class DashboardDatabase:
         cursor.execute(query, params)
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
+
+    def save_ai_analysis(
+        self,
+        test_name: str,
+        version: str,
+        platform: str,
+        analysis: Dict[str, Any]
+    ) -> int:
+        """
+        Save AI analysis to database
+
+        Args:
+            test_name: Test name
+            version: OpenShift version
+            platform: Platform name
+            analysis: Analysis dictionary with keys like root_cause, component, etc.
+
+        Returns:
+            Number of rows inserted (1 if successful)
+        """
+        cursor = self.conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO ai_analyses (
+                    test_name, version, platform, analysis_date,
+                    root_cause, component, confidence, failure_type,
+                    platform_specific, affected_platforms, evidence,
+                    suggested_action, issue_title, issue_description,
+                    analysis_mode, cost
+                ) VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                test_name,
+                version,
+                platform,
+                analysis.get('root_cause'),
+                analysis.get('component'),
+                analysis.get('confidence', 0),
+                analysis.get('failure_type'),
+                1 if analysis.get('platform_specific') else 0,
+                ','.join(analysis.get('affected_platforms', [])),
+                analysis.get('evidence'),
+                analysis.get('suggested_action'),
+                analysis.get('issue_title'),
+                analysis.get('issue_description'),
+                analysis.get('analysis_mode'),
+                analysis.get('cost', 0.0)
+            ))
+
+            self.conn.commit()
+            return 1
+
+        except sqlite3.IntegrityError:
+            return 0
+
+    def get_ai_analysis(
+        self,
+        test_name: str,
+        version: str,
+        platform: str,
+        days: int = 30
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get most recent AI analysis for a test
+
+        Args:
+            test_name: Test name
+            version: OpenShift version
+            platform: Platform name
+            days: How many days back to look
+
+        Returns:
+            Analysis dictionary or None if not found
+        """
+        cursor = self.conn.cursor()
+
+        cursor.execute("""
+            SELECT * FROM ai_analyses
+            WHERE test_name = ?
+            AND version = ?
+            AND platform = ?
+            AND analysis_date >= datetime('now', ? || ' days')
+            ORDER BY analysis_date DESC
+            LIMIT 1
+        """, (test_name, version, platform, f'-{days}'))
+
+        row = cursor.fetchone()
+        if row:
+            analysis = dict(row)
+            # Convert affected_platforms back to list
+            if analysis.get('affected_platforms'):
+                analysis['affected_platforms'] = analysis['affected_platforms'].split(',')
+            # Convert platform_specific back to boolean
+            analysis['platform_specific'] = bool(analysis.get('platform_specific'))
+            return analysis
+        return None
+
+    def get_analysis_stats(self) -> Dict[str, Any]:
+        """
+        Get statistics about AI analyses
+
+        Returns:
+            Dictionary with analysis statistics
+        """
+        cursor = self.conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_analyses,
+                SUM(CASE WHEN analysis_mode = 'local-claude-code' THEN 1 ELSE 0 END) as local_count,
+                SUM(CASE WHEN analysis_mode = 'anthropic-api' THEN 1 ELSE 0 END) as api_count,
+                SUM(cost) as total_cost
+            FROM ai_analyses
+        """)
+
+        row = cursor.fetchone()
+        if row:
+            stats = dict(row)
+            stats['savings'] = stats['local_count'] * 0.024 if stats['local_count'] else 0
+            return stats
+
+        return {
+            'total_analyses': 0,
+            'local_count': 0,
+            'api_count': 0,
+            'total_cost': 0,
+            'savings': 0
+        }
 
     def close(self):
         """Close database connection"""

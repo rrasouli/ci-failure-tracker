@@ -624,6 +624,88 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         else:
             return jsonify({'error': 'Failed to create Jira issue'}), 500
 
+    @app.route('/api/analyze-failure', methods=['POST'])
+    def api_analyze_failure():
+        """
+        Analyze test failure with AI (hybrid: local Claude Code or Anthropic API)
+        """
+        from ai.analyzer import HybridFailureAnalyzer
+
+        data = request.json
+        if not data:
+            return jsonify({'error': 'Missing request data'}), 400
+
+        test_name = data.get('test_name')
+        version = data.get('version')
+        platform = data.get('platform')
+
+        if not all([test_name, version, platform]):
+            return jsonify({'error': 'Missing required fields: test_name, version, platform'}), 400
+
+        # Check if we already have a recent analysis
+        days = data.get('days', 7)
+        existing_analysis = db.get_ai_analysis(test_name, version, platform, days)
+        if existing_analysis and data.get('use_cached', True):
+            existing_analysis['cached'] = True
+            return jsonify(existing_analysis)
+
+        # Get test error details from database
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)
+
+        query = """
+            SELECT error_message, log_url
+            FROM test_results
+            WHERE test_name = ?
+            AND version = ?
+            AND platform = ?
+            AND status = 'failed'
+            AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """
+
+        cursor = db.conn.cursor()
+        cursor.execute(query, (test_name, version, platform,
+                               start_date.isoformat(), end_date.isoformat()))
+        test_data = cursor.fetchone()
+
+        if not test_data:
+            return jsonify({'error': 'No recent failure found for this test'}), 404
+
+        error_message = test_data[0] or 'No error message'
+        log_url = test_data[1] or ''
+
+        # Analyze with hybrid approach
+        try:
+            analyzer = HybridFailureAnalyzer()
+            analysis = analyzer.analyze_failure(
+                test_name=test_name,
+                error_message=error_message,
+                log_url=log_url,
+                platform=platform,
+                version=version
+            )
+
+            # Save analysis to database
+            db.save_ai_analysis(test_name, version, platform, analysis)
+
+            analysis['cached'] = False
+            return jsonify(analysis)
+
+        except Exception as e:
+            return jsonify({
+                'error': f'Analysis failed: {str(e)}',
+                'root_cause': 'Analysis service error',
+                'confidence': 0
+            }), 500
+
+    @app.route('/api/analysis-stats')
+    def api_analysis_stats():
+        """Get statistics about AI analyses"""
+        stats = db.get_analysis_stats()
+        return jsonify(stats)
+
     @app.teardown_appcontext
     def close_db(error):
         """Close database connection on app shutdown"""

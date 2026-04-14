@@ -727,10 +727,11 @@
                                 <th style="text-align: left; padding: 12px; background: #f9fafb; font-weight: 600; font-size: 13px; text-transform: uppercase; color: #666; border-bottom: 2px solid #e5e7eb;">Pass Rate</th>
                                 <th style="text-align: left; padding: 12px; background: #f9fafb; font-weight: 600; font-size: 13px; text-transform: uppercase; color: #666; border-bottom: 2px solid #e5e7eb;">Runs</th>
                                 <th style="text-align: left; padding: 12px; background: #f9fafb; font-weight: 600; font-size: 13px; text-transform: uppercase; color: #666; border-bottom: 2px solid #e5e7eb;">Performance</th>
+                                <th style="text-align: left; padding: 12px; background: #f9fafb; font-weight: 600; font-size: 13px; text-transform: uppercase; color: #666; border-bottom: 2px solid #e5e7eb;">AI Analysis</th>
                             </tr>
                         </thead>
                         <tbody id="platformModalTests">
-                            <tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Loading...</td></tr>
+                            <tr><td colspan="7" style="text-align: center; padding: 20px; color: #666;">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1439,8 +1440,146 @@
                             <div class="label">${test.pass_rate.toFixed(1)}%</div>
                         </div>
                     </td>
+                    <td style="padding: 12px;">
+                        ${test.pass_rate < 100 ? `
+                            <button onclick="analyzeFailure('${test.test_name}', '${test.version}', '${platform}')"
+                                    style="background: #3b82f6; color: white; padding: 6px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px;">
+                                🤖 Analyze
+                            </button>
+                        ` : '<span style="color: #10b981; font-size: 12px;">Passing</span>'}
+                    </td>
                 </tr>
             `).join('');
+        }
+
+        async function analyzeFailure(testName, version, platform) {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '🤖 Analyzing...';
+
+            try {
+                const response = await fetch('/api/analyze-failure', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        test_name: testName,
+                        version: version,
+                        platform: platform,
+                        use_cached: true
+                    })
+                });
+
+                const analysis = await response.json();
+
+                if (analysis.error) {
+                    alert('Analysis failed: ' + analysis.error);
+                    return;
+                }
+
+                // Display results
+                showAnalysisModal(analysis, testName, version, platform);
+
+            } catch (error) {
+                alert('Analysis failed: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        function showAnalysisModal(analysis, testName, version, platform) {
+            const mode = analysis.analysis_mode || 'unknown';
+            const modeLabel = mode === 'local-claude-code'
+                ? '🆓 FREE (Local Claude Code)'
+                : mode === 'anthropic-api'
+                ? '💰 API (~$0.02)'
+                : '❓ Unknown';
+
+            const modeColor = mode === 'local-claude-code' ? '#10b981' : '#3b82f6';
+            const cached = analysis.cached ? ' (Cached)' : '';
+
+            const modal = document.createElement('div');
+            modal.innerHTML = `
+                <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+                    <div style="background: white; padding: 30px; border-radius: 12px; max-width: 900px; max-height: 85vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 style="margin: 0;">🤖 AI Failure Analysis</h2>
+                            <span style="background: ${modeColor}; color: white; padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                ${modeLabel}${cached}
+                            </span>
+                        </div>
+
+                        <div style="background: #f3f4f6; padding: 12px; border-radius: 6px; margin-bottom: 20px; font-size: 13px;">
+                            <strong>${testName}</strong> on ${platform} (${version})
+                        </div>
+
+                        <div style="margin: 20px 0;">
+                            <strong style="color: #374151;">Root Cause:</strong>
+                            <p style="margin: 8px 0; line-height: 1.6;">${analysis.root_cause || 'Not determined'}</p>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0;">
+                            <div>
+                                <strong style="color: #374151;">Component:</strong>
+                                <span style="background: #dbeafe; padding: 4px 8px; border-radius: 4px; margin-left: 8px; font-size: 13px;">${analysis.component || 'unknown'}</span>
+                            </div>
+                            <div>
+                                <strong style="color: #374151;">Confidence:</strong>
+                                <span style="color: ${(analysis.confidence || 0) > 70 ? '#059669' : '#f59e0b'}; font-weight: 600; margin-left: 8px;">${analysis.confidence || 0}%</span>
+                            </div>
+                        </div>
+
+                        ${analysis.evidence ? `
+                        <div style="margin: 20px 0;">
+                            <strong style="color: #374151;">Evidence:</strong>
+                            <pre style="background: #1f2937; color: #f3f4f6; padding: 12px; border-radius: 6px; overflow-x: auto; margin-top: 8px; font-size: 12px; line-height: 1.5;">${analysis.evidence}</pre>
+                        </div>
+                        ` : ''}
+
+                        ${analysis.suggested_action ? `
+                        <div style="margin: 20px 0;">
+                            <strong style="color: #374151;">Suggested Action:</strong>
+                            <p style="margin: 8px 0; line-height: 1.6; background: #fef3c7; padding: 12px; border-left: 4px solid #f59e0b; border-radius: 4px;">${analysis.suggested_action}</p>
+                        </div>
+                        ` : ''}
+
+                        ${analysis.issue_title ? `
+                        <div style="margin: 20px 0; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+                            <strong style="color: #374151;">Suggested Issue:</strong>
+                            <p style="margin: 8px 0; font-weight: 600;">${analysis.issue_title}</p>
+                            <pre style="background: #f9fafb; padding: 12px; border-radius: 6px; margin-top: 8px; font-size: 12px; white-space: pre-wrap; line-height: 1.5;">${analysis.issue_description || ''}</pre>
+                            <button onclick="copyIssueTemplate('${escapeHtml(analysis.issue_title)}', '${escapeHtml(analysis.issue_description || '')}')"
+                                    style="margin-top: 10px; background: #059669; color: white; padding: 8px 16px; border-radius: 4px; border: none; cursor: pointer; font-weight: 600;">
+                                📋 Copy Issue Template
+                            </button>
+                        </div>
+                        ` : ''}
+
+                        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                            <button onclick="this.closest('div').parentElement.parentElement.remove()"
+                                    style="background: #6b7280; color: white; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600;">
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+        }
+
+        function copyIssueTemplate(title, description) {
+            const text = `${title}\n\n${description}`;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Issue template copied to clipboard!');
+            }).catch(err => {
+                alert('Failed to copy: ' + err);
+            });
         }
 
         function closePlatformModal() {
