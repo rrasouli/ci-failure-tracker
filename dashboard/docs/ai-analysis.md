@@ -1,17 +1,33 @@
 # AI-Powered Failure Analysis
 
-The dashboard includes hybrid AI-powered failure analysis that can help identify root causes and suggest fixes.
+The dashboard includes AI-powered failure analysis that can help identify root causes and suggest fixes.
 
 ## How It Works
 
-The system uses a **hybrid approach**:
+The system uses a **3-tier fallback approach**:
 
 1. **Try Local First (FREE)** - If you're running the local AI service, it uses Claude Code for free analysis
-2. **Fall Back to API (Small Cost)** - If local service isn't running, uses Anthropic API (~$0.02 per analysis)
+2. **Fall Back to API (Small Cost)** - If local service isn't running AND API key is set, uses Anthropic API (~$0.02 per analysis)
+3. **Fall Back to Pattern Matching (FREE)** - If API key isn't set, uses built-in pattern matching for common Windows failures
+
+**No API key required!** The pattern matching fallback means analysis always works, even without an Anthropic API key.
 
 ## Setup
 
-### Option 1: API-Only Mode (Recommended for Production)
+### No Setup Required (Pattern Matching Mode)
+
+The "AI Analyze" button works out of the box with **built-in pattern matching**:
+- Detects common Windows failures (timeouts, connection issues, CSI driver problems, etc.)
+- Identifies affected components
+- Suggests fixes
+- **Completely FREE**
+- **No API key needed**
+
+Just click "AI Analyze" and it will work!
+
+### Optional: API Mode (Higher Quality Analysis)
+
+If you want higher quality analysis using Anthropic's Claude API:
 
 1. Get an Anthropic API key from: https://console.anthropic.com/settings/keys
 
@@ -22,28 +38,12 @@ oc create secret generic claude-api-key \
   --from-literal=api-key=sk-ant-api03-YOUR_KEY_HERE
 ```
 
-3. Restart POC deployment:
+3. Apply deployment config:
 ```bash
-oc rollout restart deployment/winc-dashboard-poc
+oc apply -f openshift/poc/dashboard-deployment.yaml
 ```
 
-4. That's it! The "Analyze" button will now use the API.
-
-**Cost:** ~$0.02 per analysis (very cheap!)
-
-### Option 2: Hybrid Mode (FREE when you're working)
-
-1. Follow Option 1 above (for fallback)
-
-2. When you're working, start the local service:
-```bash
-cd /Users/rrasouli/Documents/GitHub/ci-failure-tracker/dashboard
-python3 src/ai/local_service.py
-```
-
-3. Now when you click "Analyze", it uses FREE local service!
-
-**Cost:** FREE when local service is running, $0.02 per analysis when it's not
+**Cost:** ~$0.02 per analysis (pattern matching is still FREE fallback)
 
 ## Using the Feature
 
