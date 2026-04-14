@@ -1355,30 +1355,7 @@
             // Show modal
             document.getElementById('platformModal').style.display = 'block';
 
-            // Render stats summary
-            const arrow = delta > 0 ? '↑' : delta < 0 ? '↓' : '→';
-            const deltaColor = delta > 0 ? '#059669' : delta < 0 ? '#dc2626' : '#666';
-
-            document.getElementById('platformModalStats').innerHTML = `
-                <div class="platform-stat-card">
-                    <div class="platform-stat-label">Current Pass Rate</div>
-                    <div class="platform-stat-value">${currentRate}%</div>
-                </div>
-                <div class="platform-stat-card">
-                    <div class="platform-stat-label">Previous Pass Rate</div>
-                    <div class="platform-stat-value">${previousRate}%</div>
-                </div>
-                <div class="platform-stat-card">
-                    <div class="platform-stat-label">Change</div>
-                    <div class="platform-stat-value" style="color: ${deltaColor}">${arrow}${Math.abs(delta)}%</div>
-                </div>
-                <div class="platform-stat-card">
-                    <div class="platform-stat-label">Total Runs</div>
-                    <div class="platform-stat-value">${runs}</div>
-                </div>
-            `;
-
-            // Fetch platform-specific tests
+            // Fetch platform-specific tests first to calculate execution stats
             const data = await fetchData('platform-tests', {
                 platform: platform,
                 days: currentDays,
@@ -1390,6 +1367,7 @@
 
             if (!data.tests || data.tests.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#666;">No test data available for this platform</td></tr>';
+                document.getElementById('platformModalStats').innerHTML = '';
                 return;
             }
 
@@ -1400,8 +1378,11 @@
             const failedExecutions = totalExecutions - passedExecutions;
             const executionPassRate = totalExecutions > 0 ? (passedExecutions / totalExecutions * 100).toFixed(1) : 0;
 
-            // Add execution summary above the table
-            const executionSummary = `
+            // Render execution statistics at the top
+            const arrow = delta > 0 ? '↑' : delta < 0 ? '↓' : '→';
+            const deltaColor = delta > 0 ? '#059669' : delta < 0 ? '#dc2626' : '#666';
+
+            document.getElementById('platformModalStats').innerHTML = `
                 <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #3b82f6;">
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
                         <div>
@@ -1426,18 +1407,21 @@
                         </div>
                     </div>
                 </div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px;">
+                    <div class="platform-stat-card">
+                        <div class="platform-stat-label">Current Pass Rate</div>
+                        <div class="platform-stat-value">${currentRate}%</div>
+                    </div>
+                    <div class="platform-stat-card">
+                        <div class="platform-stat-label">Previous Pass Rate</div>
+                        <div class="platform-stat-value">${previousRate}%</div>
+                    </div>
+                    <div class="platform-stat-card">
+                        <div class="platform-stat-label">Change</div>
+                        <div class="platform-stat-value" style="color: ${deltaColor}">${arrow}${Math.abs(delta)}%</div>
+                    </div>
+                </div>
             `;
-
-            // Insert summary before the table
-            const modalContent = document.getElementById('platformModalTests').parentElement;
-            const existingSummary = modalContent.querySelector('.execution-summary');
-            if (existingSummary) {
-                existingSummary.remove();
-            }
-            const summaryDiv = document.createElement('div');
-            summaryDiv.className = 'execution-summary';
-            summaryDiv.innerHTML = executionSummary;
-            modalContent.insertBefore(summaryDiv, modalContent.querySelector('table'));
 
             tbody.innerHTML = data.tests.map((test, index) => `
                 <tr style="border-bottom: 1px solid #f3f4f6;">
