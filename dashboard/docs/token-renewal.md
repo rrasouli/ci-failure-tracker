@@ -26,7 +26,7 @@ oc login https://api.ci.l2s4.p1.openshiftapps.com
 oc whoami -t
 
 # Output will be something like:
-# sha256~hXab5-Ap9bt1xzxHrS4pNhDBo_ZCw1xyOEiHcs7Zd3g
+# sha256~EXAMPLE_TOKEN_REPLACE_WITH_YOUR_ACTUAL_TOKEN_FROM_OC_WHOAMI
 ```
 
 ### Step 3: Update the Secret
