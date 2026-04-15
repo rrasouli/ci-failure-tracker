@@ -38,7 +38,7 @@ spec:
                   key: api-key
                   optional: true
             - name: LOCAL_AI_SERVICE_URL
-              value: "http://ai-service:5001"
+              value: "http://claude-ai:5002"
           volumeMounts:
             - name: data
               mountPath: /data
