@@ -1,11 +1,10 @@
 """
-Hybrid AI analyzer that tries local Claude Code first, then falls back to API
+REAL AI analyzer - uses only Claude (local or Vertex AI), NO pattern matching
 """
 
 import os
 import requests
 import json
-import re
 import logging
 from typing import Dict, Any, Optional
 
@@ -14,10 +13,11 @@ logger = logging.getLogger(__name__)
 
 class HybridFailureAnalyzer:
     """
-    Hybrid AI analyzer with 3-tier fallback:
-    1. Try local Claude Code service first (FREE)
-    2. Fall back to Anthropic API if local not available (~$0.02)
-    3. Fall back to built-in pattern matching if API not available (FREE)
+    Real AI failure analyzer with 2-tier approach:
+    1. Try local Claude Code service first (FREE, queue-based)
+    2. Fall back to Vertex AI if local not available (~$0.02 per analysis)
+
+    NO pattern matching - real AI only.
     """
 
     def __init__(self):
@@ -269,194 +269,3 @@ Only return the JSON, no additional text.
             logger.error(f"API analysis error: {e}")
             return None
 
-    def _fetch_logs(self, log_url: str) -> str:
-        """Fetch build logs from URL"""
-        try:
-            response = requests.get(log_url, timeout=10)
-            if response.status_code == 200:
-                return response.text
-        except Exception as e:
-            logger.warning(f"Failed to fetch logs from {log_url}: {e}")
-        return ""
-
-    def _pattern_analysis(
-        self,
-        test_name: str,
-        error_message: str,
-        log_content: str,
-        platform: str,
-        version: str
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Analyze Windows failure using pattern matching
-        This is a free fallback when API and local service are unavailable
-        """
-        root_cause = "Unknown failure"
-        component = "windows-machine-config-operator"
-        confidence = 60
-        failure_type = "needs_investigation"
-        platform_specific = False
-        affected_platforms = [platform]
-        evidence = ""
-        suggested_action = "Further investigation needed"
-
-        # Combine error message and logs for analysis
-        combined_text = f"{error_message}\n{log_content[-2000:]}".lower()
-
-        # Pattern matching for common Windows failures
-
-        # SSH/Connection failures (exit 255) - usually transient
-        if "exit status 255" in combined_text or "ssh" in combined_text and "failed" in combined_text:
-            root_cause = "SSH connection failure to Windows node - likely transient infrastructure issue"
-            component = "infrastructure"
-            confidence = 50  # Low confidence - likely flake
-            failure_type = "system_issue"
-            platform_specific = False
-            evidence = "Exit status 255 indicates SSH connection failure"
-            suggested_action = "Retry test - likely transient network/SSH issue, not a product bug"
-
-        elif "timeout" in combined_text or "timed out" in combined_text:
-            if "azure" in combined_text or "disk" in combined_text:
-                root_cause = "Azure CSI driver timeout when mounting volumes to Windows pod"
-                component = "azure-csi-driver"
-                confidence = 85
-                failure_type = "product_bug"
-                platform_specific = True
-                affected_platforms = ["azure"]
-                evidence = "Logs show timeout waiting for Azure disk mount"
-                suggested_action = "Increase CSI driver timeout from 2m to 5m for Azure Windows nodes"
-            else:
-                root_cause = "Operation timeout - likely network or storage issue"
-                confidence = 70
-                failure_type = "system_issue"
-                evidence = "Timeout error detected in logs"
-                suggested_action = "Check network connectivity and storage performance"
-
-        elif "connection refused" in combined_text or "connection reset" in combined_text:
-            root_cause = "Network connectivity issue - connection refused or reset"
-            component = "networking"
-            confidence = 75
-            failure_type = "system_issue"
-            evidence = "Connection errors in logs"
-            suggested_action = "Check network policies and firewall rules for Windows nodes"
-
-        elif "image pull" in combined_text or "imagepullbackoff" in combined_text:
-            root_cause = "Container image pull failure"
-            component = "container-runtime"
-            confidence = 90
-            failure_type = "system_issue"
-            evidence = "Image pull errors in logs"
-            suggested_action = "Verify image registry accessibility and credentials"
-
-        elif "permission denied" in combined_text or "access denied" in combined_text:
-            root_cause = "Permission or access denied error"
-            component = "rbac"
-            confidence = 80
-            failure_type = "configuration"
-            evidence = "Permission errors in logs"
-            suggested_action = "Review RBAC policies and Windows node permissions"
-
-        elif "pod" in combined_text and ("not ready" in combined_text or "failed" in combined_text):
-            root_cause = "Windows pod failed to reach ready state"
-            component = "windows-machine-config-operator"
-            confidence = 75
-            failure_type = "product_bug"
-            evidence = "Pod readiness failure in logs"
-            suggested_action = "Check pod events and Windows node kubelet logs"
-
-        elif "wmco" in combined_text or "windows-machine-config" in combined_text:
-            root_cause = "Windows Machine Config Operator issue"
-            component = "windows-machine-config-operator"
-            confidence = 80
-            failure_type = "product_bug"
-            evidence = "WMCO errors in logs"
-            suggested_action = "Review WMCO operator logs and Windows node configuration"
-
-        elif "kubelet" in combined_text and ("ca" in combined_text or "certificate" in combined_text):
-            root_cause = "Kubelet certificate or CA rotation issue"
-            component = "kubelet"
-            confidence = 85
-            failure_type = "product_bug"
-            evidence = "Kubelet CA or certificate errors in logs"
-            suggested_action = "Verify kubelet CA bundle and certificate rotation configuration"
-
-        elif "containerd" in combined_text and "service" in combined_text:
-            if "exit status 255" in combined_text:
-                root_cause = "Failed to check containerd service status - SSH connection failure (transient)"
-                component = "infrastructure"
-                confidence = 40
-                failure_type = "system_issue"
-                evidence = "SSH failure when checking containerd service"
-                suggested_action = "Retry test - SSH connection issue, not containerd problem"
-            else:
-                root_cause = "Containerd service issue on Windows node"
-                component = "containerd"
-                confidence = 75
-                failure_type = "system_issue"
-                evidence = "Containerd service errors in logs"
-                suggested_action = "Check containerd service status and logs on Windows node"
-
-        elif "unable to connect" in combined_text or "connection timed out" in combined_text:
-            root_cause = "Network connection timeout - likely transient network issue"
-            component = "networking"
-            confidence = 45
-            failure_type = "system_issue"
-            evidence = "Connection timeout in logs"
-            suggested_action = "Retry test - likely transient network issue"
-
-        # Build issue template
-        if failure_type == "system_issue" and confidence < 60:
-            issue_title = f"System Issue: {test_name} - {root_cause[:50]}"
-            flake_note = f"\n**⚠️ LIKELY TRANSIENT SYSTEM ISSUE (Confidence: {confidence}%)** - This appears to be infrastructure/network related, not a product bug. Consider retrying before filing.\n"
-        elif failure_type == "system_issue":
-            issue_title = f"System Issue: {test_name} - {root_cause[:50]}"
-            flake_note = ""
-        else:
-            issue_title = f"{test_name} fails on {platform} - {root_cause[:50]}"
-            flake_note = ""
-
-        issue_description = f"""## Test Failure Analysis
-{flake_note}
-**Test:** {test_name}
-**Platform:** {platform}
-**Version:** {version}
-**Confidence:** {confidence}%
-
-## Root Cause
-{root_cause}
-
-## Component
-{component}
-
-## Evidence
-{evidence}
-
-## Failure Classification
-- Type: {failure_type}
-- Platform Specific: {"Yes" if platform_specific else "No"}
-- Affected Platforms: {', '.join(affected_platforms)}
-
-## Suggested Action
-{suggested_action}
-
-## Error Details
-```
-{error_message[:500]}
-```
-
-## Analysis Method
-Pattern matching (built-in fallback)
-"""
-
-        return {
-            "root_cause": root_cause,
-            "component": component,
-            "confidence": confidence,
-            "failure_type": failure_type,
-            "platform_specific": platform_specific,
-            "affected_platforms": affected_platforms,
-            "evidence": evidence,
-            "suggested_action": suggested_action,
-            "issue_title": issue_title,
-            "issue_description": issue_description
-        }
