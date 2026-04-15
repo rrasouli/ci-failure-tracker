@@ -239,6 +239,9 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     calculator = MetricsCalculator(db, blocklist=blocklist)
     report_generator = WeeklyReportGenerator(db, blocklist=blocklist)
 
+    # Check if AI analysis is enabled (default: False for production safety)
+    enable_ai = os.environ.get('ENABLE_AI_ANALYSIS', 'false').lower() == 'true'
+
     def get_latest_version():
         """
         Get the latest version from database.
@@ -290,7 +293,7 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         except Exception as e:
             print(f"Error checking database status: {e}")
 
-        return render_template('dashboard.html')
+        return render_template('dashboard.html', enable_ai=enable_ai)
 
     @app.route('/logs')
     def view_logs():

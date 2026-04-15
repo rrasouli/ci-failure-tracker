@@ -744,7 +744,7 @@
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 15px;">
                     <h2 id="logModalTitle">Test Log</h2>
-                    <span style="background: #10b981; color: white; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;">BUILD 67</span>
+                    <span style="background: {% if enable_ai %}#8b5cf6{% else %}#6b7280{% endif %}; color: white; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;">BUILD 68{% if enable_ai %} + AI{% endif %}</span>
                 </div>
                 <span class="close" onclick="closeLogModal()">&times;</span>
             </div>
@@ -752,6 +752,7 @@
                 <!-- Metadata -->
                 <div id="logMetadata" style="background: #f9fafb; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;"></div>
 
+                {% if enable_ai %}
                 <!-- AI Analysis Section (Hidden Initially) -->
                 <div id="aiAnalysisSection" style="display: none; margin-bottom: 20px;">
                     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px; color: white;">
@@ -759,14 +760,17 @@
                         <div id="aiAnalysisContent" style="background: rgba(255,255,255,0.95); color: #1e293b; padding: 15px; border-radius: 6px; font-size: 14px;"></div>
                     </div>
                 </div>
+                {% endif %}
 
                 <!-- Error Log with AI Button -->
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <h3 style="margin: 0;">Error Log</h3>
+                        {% if enable_ai %}
                         <button id="analyzeBtn" onclick="runAIAnalysis()" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;">
                             Analyze with AI
                         </button>
+                        {% endif %}
                     </div>
                     <pre id="logContent" style="background: #1e293b; color: #e2e8f0; padding: 20px; border-radius: 6px; overflow-x: auto; max-height: 500px; overflow-y: auto; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word;"></pre>
                 </div>
@@ -776,7 +780,9 @@
 
     <script>
         let trendChart, versionChart;
+        {% if enable_ai %}
         let currentLogData = {}; // Store current log data for AI analysis
+        {% endif %}
 
         function showTab(tabName) {
             // Hide all tabs
@@ -831,15 +837,16 @@
 
         // Simple modal-based log viewer (NO popup windows!)
         function openLogWindow(logContent, testTitle, metadata) {
-            console.log('=== BUILD 67 - MODAL VERSION LOADED ===');
-            console.log('openLogWindow called at line 830');
+            console.log('=== BUILD 68 - LOG VIEWER (AI: {{ "enabled" if enable_ai else "disabled" }}) ===');
 
+            {% if enable_ai %}
             // Store data globally for AI analysis
             currentLogData = {
                 logContent: logContent,
                 testTitle: testTitle,
                 metadata: metadata
             };
+            {% endif %}
 
             // Set modal title
             document.getElementById('logModalTitle').textContent = testTitle;
@@ -886,9 +893,11 @@
             // Set log content (escaped)
             document.getElementById('logContent').textContent = logContent;
 
+            {% if enable_ai %}
             // Reset AI section
             document.getElementById('aiAnalysisSection').style.display = 'none';
             document.getElementById('aiAnalysisContent').innerHTML = '';
+            {% endif %}
 
             // Show modal
             document.getElementById('logModal').style.display = 'block';
@@ -898,6 +907,7 @@
             document.getElementById('logModal').style.display = 'none';
         }
 
+        {% if enable_ai %}
         async function runAIAnalysis() {
             const btn = document.getElementById('analyzeBtn');
             const section = document.getElementById('aiAnalysisSection');
@@ -960,6 +970,7 @@
                 btn.textContent = 'Analyze with AI';
             }
         }
+        {% endif %}
 
         async function openPlatformLog(testName, testDescription, platform, version, days) {
             const title = testDescription ? `${testName} - ${testDescription}` : testName;
