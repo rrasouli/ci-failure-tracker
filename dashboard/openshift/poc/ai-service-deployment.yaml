@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-service
+  labels:
+    app: ai-service
+spec:
+  ports:
+    - name: http
+      port: 5001
+      targetPort: 5001
+      protocol: TCP
+  selector:
+    app: ai-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  labels:
+    app: ai-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-service
+  template:
+    metadata:
+      labels:
+        app: ai-service
+    spec:
+      containers:
+        - name: local-service
+          image: image-registry.openshift-image-registry.svc:5000/winc-dashboard-poc/winc-dashboard-poc:latest
+          command:
+            - python3
+            - src/ai/local_service.py
+          ports:
+            - containerPort: 5001
+              protocol: TCP
+          env:
+            - name: PYTHONPATH
+              value: src
+          volumeMounts:
+            - name: analysis-queue
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5001
+            initialDelaySeconds: 5
+            periodSeconds: 15
+
+        - name: mcp-server
+          image: image-registry.openshift-image-registry.svc:5000/winc-dashboard-poc/winc-dashboard-poc:latest
+          command:
+            - python3
+            - src/ai/mcp_server.py
+          env:
+            - name: PYTHONPATH
+              value: src
+          volumeMounts:
+            - name: analysis-queue
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+
+      volumes:
+        - name: analysis-queue
+          emptyDir: {}

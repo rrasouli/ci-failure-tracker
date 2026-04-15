@@ -36,6 +36,9 @@ spec:
                 secretKeyRef:
                   name: claude-api-key
                   key: api-key
+                  optional: true
+            - name: LOCAL_AI_SERVICE_URL
+              value: "http://ai-service:5001"
           volumeMounts:
             - name: data
               mountPath: /data
