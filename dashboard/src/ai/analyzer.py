@@ -301,7 +301,7 @@ Only return the JSON, no additional text.
             root_cause = "SSH connection failure to Windows node - likely transient infrastructure issue"
             component = "infrastructure"
             confidence = 50  # Low confidence - likely flake
-            failure_type = "flake"
+            failure_type = "system_issue"
             platform_specific = False
             evidence = "Exit status 255 indicates SSH connection failure"
             suggested_action = "Retry test - likely transient network/SSH issue, not a product bug"
@@ -319,7 +319,7 @@ Only return the JSON, no additional text.
             else:
                 root_cause = "Operation timeout - likely network or storage issue"
                 confidence = 70
-                failure_type = "infrastructure"
+                failure_type = "system_issue"
                 evidence = "Timeout error detected in logs"
                 suggested_action = "Check network connectivity and storage performance"
 
@@ -327,7 +327,7 @@ Only return the JSON, no additional text.
             root_cause = "Network connectivity issue - connection refused or reset"
             component = "networking"
             confidence = 75
-            failure_type = "infrastructure"
+            failure_type = "system_issue"
             evidence = "Connection errors in logs"
             suggested_action = "Check network policies and firewall rules for Windows nodes"
 
@@ -335,7 +335,7 @@ Only return the JSON, no additional text.
             root_cause = "Container image pull failure"
             component = "container-runtime"
             confidence = 90
-            failure_type = "infrastructure"
+            failure_type = "system_issue"
             evidence = "Image pull errors in logs"
             suggested_action = "Verify image registry accessibility and credentials"
 
@@ -376,14 +376,14 @@ Only return the JSON, no additional text.
                 root_cause = "Failed to check containerd service status - SSH connection failure (transient)"
                 component = "infrastructure"
                 confidence = 40
-                failure_type = "flake"
+                failure_type = "system_issue"
                 evidence = "SSH failure when checking containerd service"
                 suggested_action = "Retry test - SSH connection issue, not containerd problem"
             else:
                 root_cause = "Containerd service issue on Windows node"
                 component = "containerd"
                 confidence = 75
-                failure_type = "infrastructure"
+                failure_type = "system_issue"
                 evidence = "Containerd service errors in logs"
                 suggested_action = "Check containerd service status and logs on Windows node"
 
@@ -391,14 +391,17 @@ Only return the JSON, no additional text.
             root_cause = "Network connection timeout - likely transient network issue"
             component = "networking"
             confidence = 45
-            failure_type = "flake"
+            failure_type = "system_issue"
             evidence = "Connection timeout in logs"
             suggested_action = "Retry test - likely transient network issue"
 
         # Build issue template
-        if failure_type == "flake":
-            issue_title = f"Flake: {test_name} - {root_cause[:50]}"
-            flake_note = f"\n**⚠️ LIKELY FLAKE (Confidence: {confidence}%)** - This appears to be a transient issue, not a real bug. Consider retrying before filing.\n"
+        if failure_type == "system_issue" and confidence < 60:
+            issue_title = f"System Issue: {test_name} - {root_cause[:50]}"
+            flake_note = f"\n**⚠️ LIKELY TRANSIENT SYSTEM ISSUE (Confidence: {confidence}%)** - This appears to be infrastructure/network related, not a product bug. Consider retrying before filing.\n"
+        elif failure_type == "system_issue":
+            issue_title = f"System Issue: {test_name} - {root_cause[:50]}"
+            flake_note = ""
         else:
             issue_title = f"{test_name} fails on {platform} - {root_cause[:50]}"
             flake_note = ""
