@@ -23,9 +23,26 @@ class HybridFailureAnalyzer:
     def __init__(self):
         self.local_service_url = os.getenv('LOCAL_AI_SERVICE_URL', 'http://localhost:5001')
         self.claude_api_key = os.getenv('CLAUDE_API_KEY')
+        self.vertex_project_id = os.getenv('ANTHROPIC_VERTEX_PROJECT_ID')
+        self.vertex_region = os.getenv('ANTHROPIC_VERTEX_REGION')
 
         # Initialize Anthropic client (for fallback)
-        if self.claude_api_key:
+        # Supports both direct API and Vertex AI
+        if self.vertex_project_id and self.vertex_region:
+            try:
+                import anthropic
+                self.claude_client = anthropic.AnthropicVertex(
+                    project_id=self.vertex_project_id,
+                    region=self.vertex_region
+                )
+                logger.info(f"Vertex AI client initialized (project: {self.vertex_project_id}, region: {self.vertex_region})")
+            except ImportError:
+                self.claude_client = None
+                logger.warning("anthropic package not installed - API fallback unavailable")
+            except Exception as e:
+                self.claude_client = None
+                logger.warning(f"Failed to initialize Vertex AI client: {e}")
+        elif self.claude_api_key:
             try:
                 import anthropic
                 self.claude_client = anthropic.Anthropic(api_key=self.claude_api_key)
@@ -35,7 +52,7 @@ class HybridFailureAnalyzer:
                 logger.warning("anthropic package not installed - API fallback unavailable")
         else:
             self.claude_client = None
-            logger.warning("CLAUDE_API_KEY not set - API fallback unavailable")
+            logger.warning("Neither Vertex AI credentials nor CLAUDE_API_KEY set - API fallback unavailable")
 
     def _check_local_service(self) -> bool:
         """Check if local Claude Code service is running"""
