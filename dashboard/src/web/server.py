@@ -649,32 +649,37 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             existing_analysis['cached'] = True
             return jsonify(existing_analysis)
 
-        # Get test error details from database
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=7)
+        # Use provided error_message or get from database
+        error_message = data.get('error_message')
+        log_url = data.get('log_url', '')
 
-        query = """
-            SELECT error_message, log_url
-            FROM test_results
-            WHERE test_name = ?
-            AND version = ?
-            AND platform = ?
-            AND status = 'failed'
-            AND timestamp >= ? AND timestamp <= ?
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """
+        if not error_message:
+            # Get test error details from database
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=7)
 
-        cursor = db.conn.cursor()
-        cursor.execute(query, (test_name, version, platform,
-                               start_date.isoformat(), end_date.isoformat()))
-        test_data = cursor.fetchone()
+            query = """
+                SELECT error_message, log_url
+                FROM test_results
+                WHERE test_name = ?
+                AND version = ?
+                AND platform = ?
+                AND status = 'failed'
+                AND timestamp >= ? AND timestamp <= ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+            """
 
-        if not test_data:
-            return jsonify({'error': 'No recent failure found for this test'}), 404
+            cursor = db.conn.cursor()
+            cursor.execute(query, (test_name, version, platform,
+                                   start_date.isoformat(), end_date.isoformat()))
+            test_data = cursor.fetchone()
 
-        error_message = test_data[0] or 'No error message'
-        log_url = test_data[1] or ''
+            if not test_data:
+                return jsonify({'error': 'No recent failure found for this test'}), 404
+
+            error_message = test_data[0] or 'No error message'
+            log_url = test_data[1] or ''
 
         # Analyze with hybrid approach
         try:
