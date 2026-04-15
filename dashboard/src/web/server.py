@@ -720,6 +720,46 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         stats = db.get_analysis_stats()
         return jsonify(stats)
 
+    @app.route('/api/save-classification', methods=['POST'])
+    def api_save_classification():
+        """
+        Save manual classification for a test failure
+        """
+        data = request.json
+        if not data:
+            return jsonify({'error': 'Missing request data'}), 400
+
+        test_name = data.get('test_name')
+        version = data.get('version')
+        platform = data.get('platform')
+        classification = data.get('classification')
+
+        if not all([test_name, version, platform, classification]):
+            return jsonify({'error': 'Missing required fields: test_name, version, platform, classification'}), 400
+
+        # Validate classification
+        valid_classifications = ['product_bug', 'automation_bug', 'system_issue', 'transient', 'to_investigate']
+        if classification not in valid_classifications:
+            return jsonify({'error': f'Invalid classification. Must be one of: {", ".join(valid_classifications)}'}), 400
+
+        # Save to database
+        rows_updated = db.save_manual_classification(
+            test_name=test_name,
+            version=version,
+            platform=platform,
+            classification=classification,
+            classified_by='user'
+        )
+
+        if rows_updated > 0:
+            return jsonify({
+                'status': 'success',
+                'rows_updated': rows_updated,
+                'classification': classification
+            })
+        else:
+            return jsonify({'error': 'No matching test result found to update'}), 404
+
     @app.teardown_appcontext
     def close_db(error):
         """Close database connection on app shutdown"""

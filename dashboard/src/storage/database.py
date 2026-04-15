@@ -155,6 +155,15 @@ class DashboardDatabase:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_test_metrics_test_name ON test_metrics(test_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analyses_test_name ON ai_analyses(test_name)")
 
+        # Add manual_classification column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE test_results ADD COLUMN manual_classification TEXT")
+            cursor.execute("ALTER TABLE test_results ADD COLUMN classified_by TEXT")
+            cursor.execute("ALTER TABLE test_results ADD COLUMN classification_timestamp DATETIME")
+        except sqlite3.OperationalError:
+            # Column already exists
+            pass
+
         self.conn.commit()
 
     def insert_job_runs(self, job_runs: List[JobRun]) -> int:
@@ -570,6 +579,48 @@ class DashboardDatabase:
             analysis['platform_specific'] = bool(analysis.get('platform_specific'))
             return analysis
         return None
+
+    def save_manual_classification(
+        self,
+        test_name: str,
+        version: str,
+        platform: str,
+        classification: str,
+        classified_by: str = 'user'
+    ) -> int:
+        """
+        Save manual classification for a test failure
+
+        Args:
+            test_name: Test name
+            version: OpenShift version
+            platform: Platform name
+            classification: Classification (product_bug, automation_bug, system_issue, transient, to_investigate)
+            classified_by: Who classified it (default: 'user')
+
+        Returns:
+            Number of rows updated
+        """
+        cursor = self.conn.cursor()
+
+        try:
+            cursor.execute("""
+                UPDATE test_results
+                SET manual_classification = ?,
+                    classified_by = ?,
+                    classification_timestamp = datetime('now')
+                WHERE test_name = ?
+                AND version = ?
+                AND platform = ?
+                AND status = 'failed'
+            """, (classification, classified_by, test_name, version, platform))
+
+            self.conn.commit()
+            return cursor.rowcount
+
+        except Exception as e:
+            print(f"Error saving manual classification: {e}")
+            return 0
 
     def get_analysis_stats(self) -> Dict[str, Any]:
         """
