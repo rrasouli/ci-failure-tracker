@@ -23,6 +23,7 @@ class HybridFailureAnalyzer:
     def __init__(self):
         self.vertex_project_id = os.getenv('ANTHROPIC_VERTEX_PROJECT_ID')
         self.vertex_region = os.getenv('ANTHROPIC_VERTEX_REGION')
+        self.claude_api_key = os.getenv('CLAUDE_API_KEY')
 
         # Initialize Anthropic client (for fallback)
         # Supports both direct API and Vertex AI
@@ -144,7 +145,7 @@ Provide analysis as JSON with these exact fields:
   "root_cause": "1-2 sentence description of what caused the failure",
   "component": "affected component name (e.g., windows-machine-config-operator, kubelet, csi-driver)",
   "confidence": 85,
-  "failure_type": "product_bug",
+  "failure_type": "product_bug OR automation_bug OR system_issue OR transient OR to_investigate",
   "platform_specific": true,
   "affected_platforms": ["azure"],
   "evidence": "Key log lines that show the problem",
@@ -152,6 +153,13 @@ Provide analysis as JSON with these exact fields:
   "issue_title": "Bug: [brief description]",
   "issue_description": "Detailed description for Jira/GitHub issue"
 }}
+
+**Classification guidelines:**
+- product_bug: Bug in OpenShift/Windows Container product code
+- automation_bug: Bug in the test automation code itself (e.g., wrong assertions, test setup issues)
+- system_issue: Infrastructure/environment issues (network, storage, DNS, etc.)
+- transient: Flaky/intermittent issues, timing problems, resource contention
+- to_investigate: Not enough information to classify
 
 Only return the JSON, no additional text.
 """
@@ -173,12 +181,18 @@ Only return the JSON, no additional text.
             json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
             if json_match:
                 analysis = json.loads(json_match.group(1))
+                # Map failure_type to classification for frontend compatibility
+                if 'failure_type' in analysis:
+                    analysis['classification'] = analysis['failure_type']
                 logger.debug(f"API analysis succeeded: {analysis.get('root_cause', '')[:100]}")
                 return analysis
 
             # Try parsing entire response as JSON
             try:
                 analysis = json.loads(response_text)
+                # Map failure_type to classification for frontend compatibility
+                if 'failure_type' in analysis:
+                    analysis['classification'] = analysis['failure_type']
                 logger.debug(f"API analysis (direct JSON): {analysis.get('root_cause', '')[:100]}")
                 return analysis
             except json.JSONDecodeError:
@@ -189,7 +203,8 @@ Only return the JSON, no additional text.
                     'raw_analysis': response_text,
                     'component': 'unknown',
                     'confidence': 50,
-                    'failure_type': 'unknown',
+                    'classification': 'to_investigate',
+                    'failure_type': 'to_investigate',
                     'platform_specific': False,
                     'affected_platforms': [platform],
                     'evidence': 'See raw_analysis',
