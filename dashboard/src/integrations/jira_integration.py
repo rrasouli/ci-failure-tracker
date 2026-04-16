@@ -80,7 +80,8 @@ class JiraIntegration:
             return None
 
         # JQL query to find issues with this test name
-        jql = f'project = {self.config.project_key} AND summary ~ "{test_name}" AND resolution = Unresolved'
+        # Add time restriction to avoid "unbounded query" error
+        jql = f'project = {self.config.project_key} AND summary ~ "{test_name}" AND resolution = Unresolved AND created > -90d'
 
         try:
             logger.info(f"Searching for existing Jira: {jql}")
@@ -90,7 +91,9 @@ class JiraIntegration:
             response = requests.post(
                 search_url,
                 headers=self._get_headers(),
-                json={'jql': jql, 'maxResults': 1, 'fields': ['key', 'summary']}
+                json={'jql': jql, 'maxResults': 1, 'fields': ['key', 'summary']},
+                timeout=30,
+                allow_redirects=False
             )
 
             if response.status_code == 200:
@@ -102,6 +105,29 @@ class JiraIntegration:
                 else:
                     logger.info("No existing Jira found")
                     return None
+            elif response.status_code in (301, 302, 303, 307, 308):
+                # Handle redirect
+                redirect_url = response.headers.get('Location')
+                logger.warning(f"Search redirected to: {redirect_url}")
+                if redirect_url:
+                    response = requests.post(
+                        redirect_url,
+                        headers=self._get_headers(),
+                        json={'jql': jql, 'maxResults': 1, 'fields': ['key', 'summary']},
+                        timeout=30,
+                        allow_redirects=False
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get('issues'):
+                            issue = data['issues'][0]
+                            logger.info(f"Found existing Jira (after redirect): {issue['key']}")
+                            return {'key': issue['key'], 'summary': issue['fields']['summary']}
+                        else:
+                            logger.info("No existing Jira found (after redirect)")
+                            return None
+                logger.error(f"Jira search failed after redirect: {response.status_code} - {response.text}")
+                return None
             else:
                 logger.error(f"Jira search failed: {response.status_code} - {response.text}")
                 return None
@@ -297,7 +323,8 @@ class JiraIntegration:
                 create_url,
                 headers=self._get_headers(),
                 json=issue_data,
-                timeout=30
+                timeout=30,
+                allow_redirects=False  # Handle redirects manually to preserve POST method
             )
 
             logger.info(f"Response status: {response.status_code}")
