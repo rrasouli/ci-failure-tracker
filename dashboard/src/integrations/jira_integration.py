@@ -85,8 +85,8 @@ class JiraIntegration:
         try:
             logger.info(f"Searching for existing Jira: {jql}")
 
-            # Call Jira search API (v3) - POST with JQL in body
-            search_url = f"{self.config.url}/rest/api/3/search"
+            # Call Jira search API (v3) - Use new /search/jql endpoint
+            search_url = f"{self.config.url}/rest/api/3/search/jql"
             response = requests.post(
                 search_url,
                 headers=self._get_headers(),
@@ -291,22 +291,40 @@ class JiraIntegration:
 
             # Call Jira create API (v3)
             create_url = f"{self.config.url}/rest/api/3/issue"
-            logger.debug(f"POST {create_url}")
-            logger.debug(f"Headers: {self._get_headers()}")
-            logger.debug(f"Payload: {json.dumps(issue_data, indent=2)}")
+            logger.info(f"POST {create_url}")
 
             response = requests.post(
                 create_url,
                 headers=self._get_headers(),
                 json=issue_data,
-                allow_redirects=False  # Don't follow redirects that might change POST to GET
+                timeout=30
             )
+
+            logger.info(f"Response status: {response.status_code}")
 
             if response.status_code in (200, 201):
                 data = response.json()
                 issue_key = data.get('key')
                 logger.info(f"Created Jira: {issue_key}")
                 return issue_key
+            elif response.status_code in (301, 302, 303, 307, 308):
+                # Handle redirect - get the redirect location and retry
+                redirect_url = response.headers.get('Location')
+                logger.warning(f"Got redirect to: {redirect_url}")
+                if redirect_url:
+                    response = requests.post(
+                        redirect_url,
+                        headers=self._get_headers(),
+                        json=issue_data,
+                        timeout=30
+                    )
+                    if response.status_code in (200, 201):
+                        data = response.json()
+                        issue_key = data.get('key')
+                        logger.info(f"Created Jira (after redirect): {issue_key}")
+                        return issue_key
+                logger.error(f"Redirect failed: {response.status_code} - {response.text}")
+                return None
             else:
                 logger.error(f"Jira creation failed: {response.status_code} - {response.text}")
                 return None
