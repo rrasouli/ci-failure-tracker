@@ -7,6 +7,7 @@ Allows creating Jira issues for failing tests with duplicate detection.
 import os
 import logging
 import requests
+import json
 from typing import Optional, Dict, List
 from dataclasses import dataclass
 import base64
@@ -84,12 +85,12 @@ class JiraIntegration:
         try:
             logger.info(f"Searching for existing Jira: {jql}")
 
-            # Call Jira search API (v3) - use GET with query params
+            # Call Jira search API (v3) - POST with JQL in body
             search_url = f"{self.config.url}/rest/api/3/search"
-            response = requests.get(
+            response = requests.post(
                 search_url,
                 headers=self._get_headers(),
-                params={'jql': jql, 'maxResults': 1, 'fields': 'key,summary'}
+                json={'jql': jql, 'maxResults': 1, 'fields': ['key', 'summary']}
             )
 
             if response.status_code == 200:
@@ -290,10 +291,15 @@ class JiraIntegration:
 
             # Call Jira create API (v3)
             create_url = f"{self.config.url}/rest/api/3/issue"
+            logger.debug(f"POST {create_url}")
+            logger.debug(f"Headers: {self._get_headers()}")
+            logger.debug(f"Payload: {json.dumps(issue_data, indent=2)}")
+
             response = requests.post(
                 create_url,
                 headers=self._get_headers(),
-                json=issue_data
+                json=issue_data,
+                allow_redirects=False  # Don't follow redirects that might change POST to GET
             )
 
             if response.status_code in (200, 201):
