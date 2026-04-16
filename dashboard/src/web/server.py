@@ -788,12 +788,16 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
 
         # Get manual classification and Jira issue from test_results
         cursor = db.conn.cursor()
+
+        # Log query parameters for debugging
+        logger.info(f"Fetching test data: test_name={test_name}, version={version}, platform={platform}")
+
         cursor.execute("""
             SELECT manual_classification, jira_issue_key
             FROM test_results
             WHERE test_name = ?
             AND version = ?
-            AND platform = ?
+            AND UPPER(platform) = UPPER(?)
             AND status = 'failed'
             ORDER BY timestamp DESC
             LIMIT 1
@@ -803,6 +807,9 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         if row:
             result['manual_classification'] = row[0]
             result['jira_issue_key'] = row[1]
+            logger.info(f"Found test data: classification={row[0]}, jira_key={row[1]}")
+        else:
+            logger.info(f"No test data found for {test_name}/{version}/{platform}")
 
         # Get AI analysis
         ai_analysis = db.get_ai_analysis(test_name, version, platform, days=90)

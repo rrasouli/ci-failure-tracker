@@ -651,17 +651,22 @@ class DashboardDatabase:
         cursor = self.conn.cursor()
 
         try:
+            # Log for debugging
+            print(f"Saving Jira issue: {jira_issue_key} for test={test_name}, version={version}, platform={platform}")
+
             cursor.execute("""
                 UPDATE test_results
                 SET jira_issue_key = ?
                 WHERE test_name = ?
                 AND version = ?
-                AND platform = ?
+                AND UPPER(platform) = UPPER(?)
                 AND status = 'failed'
             """, (jira_issue_key, test_name, version, platform))
 
             self.conn.commit()
-            return cursor.rowcount
+            rows_updated = cursor.rowcount
+            print(f"Updated {rows_updated} rows with Jira issue key {jira_issue_key}")
+            return rows_updated
 
         except Exception as e:
             print(f"Error saving Jira issue key: {e}")
