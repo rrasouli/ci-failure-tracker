@@ -744,41 +744,13 @@
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 15px;">
                     <h2 id="logModalTitle">Test Log</h2>
-                    <span style="background: {% if enable_ai %}#8b5cf6{% else %}#6b7280{% endif %}; color: white; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;">BUILD 71{% if enable_ai %} + AI{% endif %}</span>
+                    <span style="background: {% if enable_ai %}#8b5cf6{% else %}#6b7280{% endif %}; color: white; padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;">BUILD 74{% if enable_ai %} + AI{% endif %}</span>
                 </div>
                 <span class="close" onclick="closeLogModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <!-- Metadata -->
                 <div id="logMetadata" style="background: #f9fafb; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 14px;"></div>
-
-                <!-- Manual Classification Section -->
-                <div id="classificationSection" style="margin-bottom: 20px;">
-                    <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; border: 2px solid #d1d5db;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h3 style="margin: 0; font-size: 16px; color: #1f2937;">Failure Classification</h3>
-                            <button id="saveClassificationBtn" onclick="saveClassification()" style="background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">
-                                Save
-                            </button>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                            <div>
-                                <label style="display: block; font-weight: 600; margin-bottom: 6px; color: #374151; font-size: 13px;">Classification:</label>
-                                <select id="classificationSelect" style="width: 100%; padding: 10px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px; background: white; cursor: pointer;">
-                                    <option value="">-- Select Classification --</option>
-                                    <option value="product_bug" style="color: #dc2626;">Product Bug</option>
-                                    <option value="automation_bug" style="color: #f59e0b;">Automation Bug</option>
-                                    <option value="system_issue" style="color: #3b82f6;">System Issue</option>
-                                    <option value="transient" style="color: #10b981;">Transient</option>
-                                    <option value="to_investigate" style="color: #8b5cf6;">To Investigate</option>
-                                </select>
-                            </div>
-                            <div id="classificationStatus" style="display: flex; align-items: flex-end; font-size: 13px; color: #6b7280;">
-                                Select a classification and click Save
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 {% if enable_ai %}
                 <!-- AI Analysis Section (Hidden Initially) -->
@@ -869,7 +841,7 @@
 
         // Simple modal-based log viewer (NO popup windows!)
         function openLogWindow(logContent, testTitle, metadata) {
-            console.log('=== BUILD 71 - JIRA BUTTON MOVED + DB CLEANER (AI: {{ "enabled" if enable_ai else "disabled" }}) ===');
+            console.log('=== BUILD 74 - CLASSIFICATION REMOVED, AI ANALYSIS KEPT (AI: {{ "enabled" if enable_ai else "disabled" }}) ===');
 
             // Store data globally for AI analysis and Jira creation
             currentLogData = {
@@ -997,67 +969,6 @@
             }
         }
 
-        async function saveClassification() {
-            const btn = document.getElementById('saveClassificationBtn');
-            const select = document.getElementById('classificationSelect');
-            const status = document.getElementById('classificationStatus');
-            const classification = select.value;
-
-            if (!classification) {
-                status.innerHTML = '<span style="color: #dc2626;">Please select a classification</span>';
-                return;
-            }
-
-            if (!currentLogData || !currentLogData.metadata) {
-                status.innerHTML = '<span style="color: #dc2626;">No test data available</span>';
-                return;
-            }
-
-            const originalBtnText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = 'Saving...';
-            status.innerHTML = '<span style="color: #6b7280;">Saving...</span>';
-
-            try {
-                const response = await fetch('/api/save-classification', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        test_name: currentLogData.metadata.testName,
-                        version: currentLogData.metadata.version,
-                        platform: currentLogData.metadata.platform,
-                        classification: classification
-                    })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    const classNames = {
-                        'product_bug': 'Product Bug',
-                        'automation_bug': 'Automation Bug',
-                        'system_issue': 'System Issue',
-                        'transient': 'Transient',
-                        'to_investigate': 'To Investigate'
-                    };
-                    status.innerHTML = `<span style="color: #10b981; font-weight: 600;">Saved as ${classNames[classification]}</span>`;
-                    btn.textContent = 'Saved';
-                    btn.style.background = '#10b981';
-                    setTimeout(() => {
-                        btn.textContent = originalBtnText;
-                        btn.style.background = '#10b981';
-                    }, 2000);
-                } else {
-                    status.innerHTML = `<span style="color: #dc2626;">${data.error || 'Failed to save'}</span>`;
-                }
-            } catch (error) {
-                console.error('Error saving classification:', error);
-                status.innerHTML = `<span style="color: #dc2626;">Error: ${error.message}</span>`;
-            } finally {
-                btn.disabled = false;
-            }
-        }
-
         {% if enable_ai %}
         async function runAIAnalysis() {
             const btn = document.getElementById('analyzeBtn');
@@ -1090,33 +1001,13 @@
                 const data = await response.json();
 
                 if (response.ok && data.root_cause) {
-                    const classColors = {
-                        'product_bug': '#dc2626',
-                        'automation_bug': '#f59e0b',
-                        'system_issue': '#3b82f6',
-                        'transient': '#10b981',
-                        'to_investigate': '#8b5cf6'
-                    };
-                    const classColor = classColors[data.classification] || '#6b7280';
-
                     content.innerHTML = `
-                        <div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0;">
-                            <span style="display: inline-block; background: ${classColor}; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 700; text-transform: uppercase;">
-                                ${data.classification || 'Unknown'}
-                            </span>
-                        </div>
                         <div style="margin-bottom: 10px;"><strong>Root Cause:</strong> ${data.root_cause}</div>
                         <div style="margin-bottom: 10px;"><strong>Component:</strong> ${data.component || 'Unknown'}</div>
                         <div style="margin-bottom: 10px;"><strong>Confidence:</strong> ${data.confidence || 'N/A'}%</div>
                         ${data.evidence ? `<div style="margin-bottom: 10px;"><strong>Evidence:</strong> ${data.evidence}</div>` : ''}
                         ${data.suggested_action ? `<div><strong>Suggested Action:</strong> ${data.suggested_action}</div>` : ''}
                     `;
-
-                    // Auto-select classification in dropdown
-                    if (data.classification) {
-                        document.getElementById('classificationSelect').value = data.classification;
-                        document.getElementById('classificationStatus').innerHTML = '<span style="color: #3b82f6;">AI suggests: ' + data.classification.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + '</span>';
-                    }
                 } else {
                     content.innerHTML = `<div style="color: #dc2626; padding: 10px; background: #fee2e2; border-radius: 6px;">Error: ${data.error || 'Failed to analyze'}</div>`;
                 }
