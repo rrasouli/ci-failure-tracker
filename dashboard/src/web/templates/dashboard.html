@@ -1216,7 +1216,6 @@
 
         {% if enable_ai %}
         async function runAIAnalysis() {
-            const btn = document.getElementById('analyzeBtn');
             const section = document.getElementById('aiAnalysisSection');
             const content = document.getElementById('aiAnalysisContent');
 
@@ -1225,10 +1224,8 @@
                 return;
             }
 
-            btn.disabled = true;
-            btn.textContent = 'Analyzing...';
             section.style.display = 'block';
-            content.innerHTML = '<div style="text-align: center; padding: 20px;">Analyzing failure... (~5 seconds)</div>';
+            content.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b;">Analyzing failure... (~5 seconds)</div>';
 
             try {
                 const response = await fetch('/api/analyze-failure', {
@@ -1246,21 +1243,40 @@
                 const data = await response.json();
 
                 if (response.ok && data.root_cause) {
+                    // Display in same format as auto-loaded analysis
                     content.innerHTML = `
-                        <div style="margin-bottom: 10px;"><strong>Root Cause:</strong> ${data.root_cause}</div>
-                        <div style="margin-bottom: 10px;"><strong>Component:</strong> ${data.component || 'Unknown'}</div>
-                        <div style="margin-bottom: 10px;"><strong>Confidence:</strong> ${data.confidence || 'N/A'}%</div>
-                        ${data.evidence ? `<div style="margin-bottom: 10px;"><strong>Evidence:</strong> ${data.evidence}</div>` : ''}
-                        ${data.suggested_action ? `<div><strong>Suggested Action:</strong> ${data.suggested_action}</div>` : ''}
+                        <div style="background: #f9fafb; padding: 15px; border-radius: 6px; margin-bottom: 12px;">
+                            <div style="font-weight: 600; color: #374151; margin-bottom: 8px;">Root Cause:</div>
+                            <div style="color: #1f2937;">${data.root_cause || 'N/A'}</div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                            <div style="background: #f9fafb; padding: 12px; border-radius: 6px;">
+                                <div style="font-weight: 600; color: #374151; margin-bottom: 6px; font-size: 13px;">Component:</div>
+                                <div style="color: #1f2937; font-size: 14px;">${data.component || 'Unknown'}</div>
+                            </div>
+                            <div style="background: #f9fafb; padding: 12px; border-radius: 6px;">
+                                <div style="font-weight: 600; color: #374151; margin-bottom: 6px; font-size: 13px;">Confidence:</div>
+                                <div style="color: #1f2937; font-size: 14px;">${data.confidence || 0}%</div>
+                            </div>
+                        </div>
+                        ${data.evidence ? `
+                            <div style="background: #f9fafb; padding: 15px; border-radius: 6px; margin-bottom: 12px;">
+                                <div style="font-weight: 600; color: #374151; margin-bottom: 8px;">Evidence:</div>
+                                <div style="color: #1f2937; font-size: 14px; white-space: pre-wrap;">${data.evidence}</div>
+                            </div>
+                        ` : ''}
+                        ${data.suggested_action ? `
+                            <div style="background: #fef3c7; padding: 15px; border-radius: 6px;">
+                                <div style="font-weight: 600; color: #92400e; margin-bottom: 8px;">Suggested Action:</div>
+                                <div style="color: #78350f; font-size: 14px;">${data.suggested_action}</div>
+                            </div>
+                        ` : ''}
                     `;
                 } else {
                     content.innerHTML = `<div style="color: #dc2626; padding: 10px; background: #fee2e2; border-radius: 6px;">Error: ${data.error || 'Failed to analyze'}</div>`;
                 }
             } catch (error) {
                 content.innerHTML = `<div style="color: #dc2626; padding: 10px; background: #fee2e2; border-radius: 6px;">Error: ${error.message}</div>`;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Analyze with AI';
             }
         }
         {% endif %}
