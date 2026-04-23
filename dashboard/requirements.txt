@@ -8,6 +8,7 @@ urllib3>=2.6.3
 
 # Data Processing
 pyyaml>=6.0
+openpyxl>=3.1.0
 
 # CLI & Terminal
 rich>=13.0.0

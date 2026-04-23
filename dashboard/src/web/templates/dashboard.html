@@ -509,6 +509,10 @@
             opacity: 0.9;
         }
 
+        #exportMenu a:hover {
+            background: #f3f4f6;
+        }
+
         .platform-stat-card {
             background: #f9fafb;
             padding: 15px;
@@ -577,9 +581,23 @@
                     <select id="versionFilter" onchange="refreshDashboard()">
                     </select>
                 </div>
-                <button class="refresh-button" onclick="triggerCollection()" title="Collect latest data from ReportPortal">
-                    🔄 Refresh Data
-                </button>
+                <div style="display: flex; gap: 10px;">
+                    <div style="position: relative; display: inline-block;">
+                        <button class="refresh-button" onclick="toggleExportMenu()" title="Export test results">
+                            Export
+                        </button>
+                        <div id="exportMenu" style="display: none; position: absolute; right: 0; top: 100%; margin-top: 5px; background: white; border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; min-width: 150px;">
+                            <div style="padding: 8px 0;">
+                                <a onclick="exportData('xlsx')" style="display: block; padding: 10px 16px; cursor: pointer; text-decoration: none; color: #333; font-weight: 500;">Excel (.xlsx)</a>
+                                <a onclick="exportData('csv')" style="display: block; padding: 10px 16px; cursor: pointer; text-decoration: none; color: #333; font-weight: 500;">CSV (.csv)</a>
+                                <a onclick="exportData('md')" style="display: block; padding: 10px 16px; cursor: pointer; text-decoration: none; color: #333; font-weight: 500;">Markdown (.md)</a>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="refresh-button" onclick="triggerCollection()" title="Collect latest data from ReportPortal">
+                        🔄 Refresh Data
+                    </button>
+                </div>
             </div>
 
         <div class="summary-cards">
@@ -838,6 +856,43 @@
             const response = await fetch(`/api/${endpoint}?${queryString}`);
             return await response.json();
         }
+
+        function toggleExportMenu() {
+            const menu = document.getElementById('exportMenu');
+            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function exportData(format) {
+            // Hide the menu
+            document.getElementById('exportMenu').style.display = 'none';
+
+            // Get current filters
+            const days = document.getElementById('timeRange').value;
+            const version = document.getElementById('versionFilter').value;
+
+            // Build export URL
+            const params = new URLSearchParams({
+                format: format,
+                days: days,
+                version: version
+            });
+
+            // Trigger download
+            window.location.href = `/api/export?${params.toString()}`;
+        }
+
+        // Close export menu when clicking outside
+        document.addEventListener('click', function(event) {
+            const menu = document.getElementById('exportMenu');
+            const button = event.target.closest('button');
+
+            if (menu && menu.style.display === 'block') {
+                // Check if click is outside the export menu and button
+                if (!menu.contains(event.target) && (!button || button.textContent.trim() !== 'Export')) {
+                    menu.style.display = 'none';
+                }
+            }
+        });
 
         async function triggerCollection() {
             try {

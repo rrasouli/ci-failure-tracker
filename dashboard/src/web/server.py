@@ -2,7 +2,7 @@
 Flask web server for dashboard
 """
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 from datetime import datetime, timedelta
 from pathlib import Path
 import yaml
@@ -10,6 +10,12 @@ import threading
 import sys
 import os
 import logging
+import io
+import csv
+from openpyxl import Workbook
+from openpyxl.chart import PieChart, Reference
+from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.utils import get_column_letter
 
 from storage.database import DashboardDatabase
 from metrics.calculator import MetricsCalculator
@@ -817,6 +823,265 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             result['ai_analysis'] = ai_analysis
 
         return jsonify(result)
+
+    @app.route('/api/export')
+    def api_export():
+        """Export test results to XLSX, CSV, or MD format"""
+        export_format = request.args.get('format', 'xlsx')
+        days = request.args.get('days', 30, type=int)
+        version = normalize_version(request.args.get('version'))
+
+        # Get metadata to get all platforms
+        query = "SELECT DISTINCT platform FROM test_results WHERE platform IS NOT NULL ORDER BY platform"
+        platforms_data = db.execute_query(query)
+        platforms = [row['platform'] for row in platforms_data] if platforms_data else []
+
+        # Collect data for all platforms
+        all_data = {}
+        pass_rates = {}
+
+        for platform in platforms:
+            tests = calculator.get_test_rankings(days=days, version=version, platform=platform, limit=1000)
+            all_data[platform] = tests
+
+            # Calculate pass rate for this platform
+            if tests:
+                total_executions = sum(test['total_runs'] for test in tests)
+                passed_executions = sum(test['passed_runs'] for test in tests)
+                pass_rate = (passed_executions / total_executions * 100) if total_executions > 0 else 0
+                pass_rates[platform] = pass_rate
+
+        # Generate file based on format
+        today = datetime.now().strftime('%Y-%m-%d')
+        filename = f'dashboard-export-{today}'
+
+        if export_format == 'xlsx':
+            return export_to_xlsx(all_data, pass_rates, filename)
+        elif export_format == 'csv':
+            return export_to_csv(all_data, filename)
+        elif export_format == 'md':
+            return export_to_markdown(all_data, filename)
+        else:
+            return jsonify({'error': 'Invalid format. Use xlsx, csv, or md'}), 400
+
+    def export_to_xlsx(all_data, pass_rates, filename):
+        """Export to Excel with multiple sheets and pass rate chart"""
+        wb = Workbook()
+        wb.remove(wb.active)  # Remove default sheet
+
+        # Create a summary sheet first
+        summary_sheet = wb.create_sheet('Summary', 0)
+        summary_sheet['A1'] = 'Platform'
+        summary_sheet['B1'] = 'Pass Rate (%)'
+        summary_sheet['C1'] = 'Total Tests'
+        summary_sheet['D1'] = 'Total Executions'
+        summary_sheet['E1'] = 'Passed'
+        summary_sheet['F1'] = 'Failed'
+
+        # Style header
+        header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
+        header_font = Font(bold=True, color='FFFFFF')
+        for col in ['A', 'B', 'C', 'D', 'E', 'F']:
+            cell = summary_sheet[f'{col}1']
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center')
+
+        # Add platform summary data
+        row = 2
+        for platform, tests in all_data.items():
+            if not tests:
+                continue
+
+            total_tests = len(tests)
+            total_executions = sum(test['total_runs'] for test in tests)
+            passed_executions = sum(test['passed_runs'] for test in tests)
+            failed_executions = total_executions - passed_executions
+            pass_rate = pass_rates.get(platform, 0)
+
+            summary_sheet[f'A{row}'] = platform
+            summary_sheet[f'B{row}'] = round(pass_rate, 1)
+            summary_sheet[f'C{row}'] = total_tests
+            summary_sheet[f'D{row}'] = total_executions
+            summary_sheet[f'E{row}'] = passed_executions
+            summary_sheet[f'F{row}'] = failed_executions
+            row += 1
+
+        # Add pass rate pie chart
+        if len(all_data) > 0:
+            chart = PieChart()
+            chart.title = 'Pass Rate by Platform'
+            chart.height = 12
+            chart.width = 20
+
+            labels = Reference(summary_sheet, min_col=1, min_row=2, max_row=row-1)
+            data = Reference(summary_sheet, min_col=2, min_row=1, max_row=row-1)
+            chart.add_data(data, titles_from_data=True)
+            chart.set_categories(labels)
+
+            summary_sheet.add_chart(chart, 'H2')
+
+        # Adjust column widths
+        summary_sheet.column_dimensions['A'].width = 20
+        summary_sheet.column_dimensions['B'].width = 15
+        summary_sheet.column_dimensions['C'].width = 15
+        summary_sheet.column_dimensions['D'].width = 18
+        summary_sheet.column_dimensions['E'].width = 15
+        summary_sheet.column_dimensions['F'].width = 15
+
+        # Create a sheet for each platform
+        for platform, tests in all_data.items():
+            if not tests:
+                continue
+
+            sheet = wb.create_sheet(platform)
+
+            # Headers
+            headers = ['Test ID', 'Title', 'Status', 'Prow URL', 'Comments']
+            for col_num, header in enumerate(headers, 1):
+                cell = sheet.cell(row=1, column=col_num, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center')
+
+            # Add test data
+            for row_num, test in enumerate(tests, 2):
+                # Extract test ID from test_name (e.g., "OCP-12345" or just use the name)
+                test_id = test['test_name'].split('-')[0] if '-' in test['test_name'] else test['test_name']
+
+                # Determine status based on pass rate
+                status = 'Passed' if test['pass_rate'] >= 100 else 'Failed'
+
+                # Get the job URL (use the latest run URL if available)
+                job_url = ''
+                # Query for most recent job URL
+                query = """
+                    SELECT job_url FROM test_results
+                    WHERE test_name = ? AND platform = ?
+                    ORDER BY timestamp DESC LIMIT 1
+                """
+                result = db.execute_query(query, [test['test_name'], platform])
+                if result and result[0]['job_url']:
+                    job_url = result[0]['job_url']
+
+                sheet.cell(row=row_num, column=1, value=test['test_name'])
+                sheet.cell(row=row_num, column=2, value=test.get('test_description', ''))
+                sheet.cell(row=row_num, column=3, value=status)
+                sheet.cell(row=row_num, column=4, value=job_url)
+                sheet.cell(row=row_num, column=5, value='')  # Empty comments column
+
+                # Make URL clickable if it exists
+                if job_url:
+                    cell = sheet.cell(row=row_num, column=4)
+                    cell.hyperlink = job_url
+                    cell.font = Font(color='0563C1', underline='single')
+
+            # Adjust column widths
+            sheet.column_dimensions['A'].width = 30
+            sheet.column_dimensions['B'].width = 50
+            sheet.column_dimensions['C'].width = 12
+            sheet.column_dimensions['D'].width = 60
+            sheet.column_dimensions['E'].width = 30
+
+        # Save to BytesIO
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'{filename}.xlsx'
+        )
+
+    def export_to_csv(all_data, filename):
+        """Export to CSV with all platforms in one file"""
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow(['Platform', 'Test ID', 'Title', 'Status', 'Prow URL', 'Comments'])
+
+        # Write data for all platforms
+        for platform, tests in all_data.items():
+            for test in tests:
+                test_id = test['test_name']
+                title = test.get('test_description', '')
+                status = 'Passed' if test['pass_rate'] >= 100 else 'Failed'
+
+                # Get job URL
+                job_url = ''
+                query = """
+                    SELECT job_url FROM test_results
+                    WHERE test_name = ? AND platform = ?
+                    ORDER BY timestamp DESC LIMIT 1
+                """
+                result = db.execute_query(query, [test['test_name'], platform])
+                if result and result[0]['job_url']:
+                    job_url = result[0]['job_url']
+
+                writer.writerow([platform, test_id, title, status, job_url, ''])
+
+        # Convert to bytes
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'{filename}.csv'
+        )
+
+    def export_to_markdown(all_data, filename):
+        """Export to Markdown with multiple tables"""
+        output = io.StringIO()
+
+        output.write(f'# Dashboard Export\n\n')
+        output.write(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
+
+        # Create a table for each platform
+        for platform, tests in all_data.items():
+            if not tests:
+                continue
+
+            output.write(f'## {platform}\n\n')
+            output.write('| Test ID | Title | Status | Prow URL |\n')
+            output.write('|---------|-------|--------|----------|\n')
+
+            for test in tests:
+                test_id = test['test_name']
+                title = test.get('test_description', '')
+                status = 'Passed' if test['pass_rate'] >= 100 else 'Failed'
+
+                # Get job URL
+                job_url = ''
+                query = """
+                    SELECT job_url FROM test_results
+                    WHERE test_name = ? AND platform = ?
+                    ORDER BY timestamp DESC LIMIT 1
+                """
+                result = db.execute_query(query, [test['test_name'], platform])
+                if result and result[0]['job_url']:
+                    job_url = result[0]['job_url']
+
+                # Escape pipe characters in title
+                title = title.replace('|', '\\|')
+
+                # Format URL as markdown link
+                url_display = f'[Link]({job_url})' if job_url else ''
+
+                output.write(f'| {test_id} | {title} | {status} | {url_display} |\n')
+
+            output.write('\n')
+
+        # Convert to bytes
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            mimetype='text/markdown',
+            as_attachment=True,
+            download_name=f'{filename}.md'
+        )
 
     @app.teardown_appcontext
     def close_db(error):
