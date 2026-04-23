@@ -49,7 +49,7 @@ jira:
   parent_epic: "WINC-1552"  # Fix flaky tests epic
 
   # Issue type for created tickets
-  issue_type: "Sub-task"  # or "Bug", "Task", "Story"
+  issue_type: "Task"  # or "Bug", "Sub-task", "Story"
 
   # Component (optional)
   component: "Test Infrastructure"

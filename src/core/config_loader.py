@@ -31,7 +31,7 @@ class TeamConfig:
     jira_url: str = "https://issues.redhat.com"
     jira_project: str = ""
     jira_parent_epic: str = ""
-    jira_issue_type: str = "Sub-task"
+    jira_issue_type: str = "Task"
     jira_component: str = ""
     jira_labels: List[str] = field(default_factory=list)
     jira_priority: str = "Normal"
@@ -101,7 +101,7 @@ class TeamConfig:
             jira_url=jira.get('url', 'https://issues.redhat.com'),
             jira_project=jira.get('project', ''),
             jira_parent_epic=jira.get('parent_epic', ''),
-            jira_issue_type=jira.get('issue_type', 'Sub-task'),
+            jira_issue_type=jira.get('issue_type', 'Task'),
             jira_component=jira.get('component', ''),
             jira_labels=jira.get('labels', []),
             jira_priority=jira.get('priority', 'Normal'),
