@@ -829,7 +829,11 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         """Export test results to XLSX, CSV, or MD format"""
         export_format = request.args.get('format', 'xlsx')
         days = request.args.get('days', 30, type=int)
-        version = normalize_version(request.args.get('version'))
+        version_param = request.args.get('version')
+        version = normalize_version(version_param)
+
+        # Debug logging
+        logger.info(f"[EXPORT] Received: format={export_format}, days={days}, version_param={version_param}, normalized_version={version}")
 
         # Get metadata to get all platforms
         query = "SELECT DISTINCT platform FROM test_results WHERE platform IS NOT NULL ORDER BY platform"
@@ -841,7 +845,9 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         pass_rates = {}
 
         for platform in platforms:
+            logger.info(f"[EXPORT] Fetching {platform} data: days={days}, version={version}")
             tests = calculator.get_test_rankings(days=days, version=version, platform=platform, limit=1000)
+            logger.info(f"[EXPORT] {platform}: Found {len(tests)} tests")
             all_data[platform] = tests
 
             # Calculate pass rate for this platform
@@ -853,42 +859,52 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
 
         # Generate file based on format
         today = datetime.now().strftime('%Y-%m-%d')
-        filename = f'dashboard-export-{today}'
+        filename = f'dashboard-export-{version}-{days}days-{today}'
 
         if export_format == 'xlsx':
-            return export_to_xlsx(all_data, pass_rates, filename)
+            return export_to_xlsx(all_data, pass_rates, filename, version, days)
         elif export_format == 'csv':
-            return export_to_csv(all_data, filename)
+            return export_to_csv(all_data, filename, version, days)
         elif export_format == 'md':
-            return export_to_markdown(all_data, filename)
+            return export_to_markdown(all_data, filename, version, days)
         else:
             return jsonify({'error': 'Invalid format. Use xlsx, csv, or md'}), 400
 
-    def export_to_xlsx(all_data, pass_rates, filename):
+    def export_to_xlsx(all_data, pass_rates, filename, version, days):
         """Export to Excel with multiple sheets and pass rate chart"""
         wb = Workbook()
         wb.remove(wb.active)  # Remove default sheet
 
         # Create a summary sheet first
         summary_sheet = wb.create_sheet('Summary', 0)
-        summary_sheet['A1'] = 'Platform'
-        summary_sheet['B1'] = 'Pass Rate (%)'
-        summary_sheet['C1'] = 'Total Tests'
-        summary_sheet['D1'] = 'Total Executions'
-        summary_sheet['E1'] = 'Passed'
-        summary_sheet['F1'] = 'Failed'
+
+        # Add version and date range info at the top
+        summary_sheet['A1'] = f'Version: {version}'
+        summary_sheet['A1'].font = Font(bold=True, size=14)
+        summary_sheet['A2'] = f'Time Range: {days} days'
+        summary_sheet['A2'].font = Font(bold=True, size=14)
+        summary_sheet['A3'] = f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+        summary_sheet['A3'].font = Font(size=11, italic=True)
+
+        # Headers starting from row 5
+        summary_sheet['A5'] = 'Platform'
+        summary_sheet['B5'] = 'Pass Rate (%)'
+        summary_sheet['C5'] = 'Total Tests'
+        summary_sheet['D5'] = 'Total Executions'
+        summary_sheet['E5'] = 'Passed'
+        summary_sheet['F5'] = 'Failed'
 
         # Style header
         header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid')
         header_font = Font(bold=True, color='FFFFFF')
         for col in ['A', 'B', 'C', 'D', 'E', 'F']:
-            cell = summary_sheet[f'{col}1']
+            cell = summary_sheet[f'{col}5']
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center')
 
-        # Add platform summary data
-        row = 2
+        # Add platform summary data (starting from row 6)
+        row = 6
         for platform, tests in all_data.items():
             if not tests:
                 continue
@@ -914,12 +930,12 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             chart.height = 12
             chart.width = 20
 
-            labels = Reference(summary_sheet, min_col=1, min_row=2, max_row=row-1)
-            data = Reference(summary_sheet, min_col=2, min_row=1, max_row=row-1)
+            labels = Reference(summary_sheet, min_col=1, min_row=6, max_row=row-1)
+            data = Reference(summary_sheet, min_col=2, min_row=5, max_row=row-1)
             chart.add_data(data, titles_from_data=True)
             chart.set_categories(labels)
 
-            summary_sheet.add_chart(chart, 'H2')
+            summary_sheet.add_chart(chart, 'H6')
 
         # Adjust column widths
         summary_sheet.column_dimensions['A'].width = 20
@@ -954,13 +970,13 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
 
                 # Get the job URL (use the latest run URL if available)
                 job_url = ''
-                # Query for most recent job URL
+                # Query for most recent job URL (filtered by version)
                 query = """
                     SELECT job_url FROM test_results
-                    WHERE test_name = ? AND platform = ?
+                    WHERE test_name = ? AND platform = ? AND version = ?
                     ORDER BY timestamp DESC LIMIT 1
                 """
-                result = db.execute_query(query, [test['test_name'], platform])
+                result = db.execute_query(query, [test['test_name'], platform, version])
                 if result and result[0]['job_url']:
                     job_url = result[0]['job_url']
 
@@ -995,10 +1011,16 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             download_name=f'{filename}.xlsx'
         )
 
-    def export_to_csv(all_data, filename):
+    def export_to_csv(all_data, filename, version, days):
         """Export to CSV with all platforms in one file"""
         output = io.StringIO()
         writer = csv.writer(output)
+
+        # Write metadata as comments
+        writer.writerow([f'# Version: {version}'])
+        writer.writerow([f'# Time Range: {days} days'])
+        writer.writerow([f'# Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'])
+        writer.writerow([])  # Empty row
 
         # Write header
         writer.writerow(['Platform', 'Test ID', 'Title', 'Status', 'Prow URL', 'Comments'])
@@ -1010,14 +1032,14 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                 title = test.get('test_description', '')
                 status = 'Passed' if test['pass_rate'] >= 100 else 'Failed'
 
-                # Get job URL
+                # Get job URL (filtered by version)
                 job_url = ''
                 query = """
                     SELECT job_url FROM test_results
-                    WHERE test_name = ? AND platform = ?
+                    WHERE test_name = ? AND platform = ? AND version = ?
                     ORDER BY timestamp DESC LIMIT 1
                 """
-                result = db.execute_query(query, [test['test_name'], platform])
+                result = db.execute_query(query, [test['test_name'], platform, version])
                 if result and result[0]['job_url']:
                     job_url = result[0]['job_url']
 
@@ -1032,12 +1054,14 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             download_name=f'{filename}.csv'
         )
 
-    def export_to_markdown(all_data, filename):
+    def export_to_markdown(all_data, filename, version, days):
         """Export to Markdown with multiple tables"""
         output = io.StringIO()
 
         output.write(f'# Dashboard Export\n\n')
-        output.write(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
+        output.write(f'**Version:** {version}\n\n')
+        output.write(f'**Time Range:** {days} days\n\n')
+        output.write(f'**Generated:** {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}\n\n')
 
         # Create a table for each platform
         for platform, tests in all_data.items():
@@ -1053,14 +1077,14 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                 title = test.get('test_description', '')
                 status = 'Passed' if test['pass_rate'] >= 100 else 'Failed'
 
-                # Get job URL
+                # Get job URL (filtered by version)
                 job_url = ''
                 query = """
                     SELECT job_url FROM test_results
-                    WHERE test_name = ? AND platform = ?
+                    WHERE test_name = ? AND platform = ? AND version = ?
                     ORDER BY timestamp DESC LIMIT 1
                 """
-                result = db.execute_query(query, [test['test_name'], platform])
+                result = db.execute_query(query, [test['test_name'], platform, version])
                 if result and result[0]['job_url']:
                     job_url = result[0]['job_url']
 
