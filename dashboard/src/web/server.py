@@ -965,15 +965,17 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                 # Extract test ID from test_name (e.g., "OCP-12345" or just use the name)
                 test_id = test['test_name'].split('-')[0] if '-' in test['test_name'] else test['test_name']
 
-                # Get the most recent run to determine current status
+                # Get the most recent NON-SKIPPED run to determine current status
+                # We exclude skipped tests from dashboard/export per team policy
                 query = """
                     SELECT status, job_url FROM test_results
                     WHERE test_name = ? AND platform = ? AND version = ?
+                      AND status != 'skipped'
                     ORDER BY timestamp DESC LIMIT 1
                 """
                 result = db.execute_query(query, [test['test_name'], platform, version])
 
-                # Determine status and URL from the latest run
+                # Determine status and URL from the latest non-skipped run
                 job_url = ''
                 status = 'Unknown'
                 if result and len(result) > 0:
@@ -984,10 +986,12 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                         status = 'Passed'
                     elif latest_status == 'failed':
                         status = 'Failed'
-                    elif latest_status == 'skipped':
-                        status = 'Skipped'
                     else:
                         status = latest_status.capitalize() if latest_status else 'Unknown'
+                else:
+                    # If no non-skipped runs found, skip this test entirely
+                    continue
+
                 if result and result[0]['job_url']:
                     job_url = result[0]['job_url']
 
@@ -1042,15 +1046,20 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                 test_id = test['test_name']
                 title = test.get('test_description', '')
 
-                # Get the most recent run to determine current status
+                # Get the most recent NON-SKIPPED run (exclude skipped tests per team policy)
                 query = """
                     SELECT status, job_url FROM test_results
                     WHERE test_name = ? AND platform = ? AND version = ?
+                      AND status != 'skipped'
                     ORDER BY timestamp DESC LIMIT 1
                 """
                 result = db.execute_query(query, [test['test_name'], platform, version])
 
-                # Determine status and URL from the latest run
+                # Skip tests that only have skipped runs
+                if not result or len(result) == 0:
+                    continue
+
+                # Determine status and URL from the latest non-skipped run
                 job_url = ''
                 status = 'Unknown'
                 if result and len(result) > 0:
@@ -1060,8 +1069,6 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                         status = 'Passed'
                     elif latest_status == 'failed':
                         status = 'Failed'
-                    elif latest_status == 'skipped':
-                        status = 'Skipped'
                     else:
                         status = latest_status.capitalize() if latest_status else 'Unknown'
 
@@ -1090,23 +1097,26 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             if not tests:
                 continue
 
-            output.write(f'## {platform}\n\n')
-            output.write('| Test ID | Title | Status | Prow URL |\n')
-            output.write('|---------|-------|--------|----------|\n')
-
+            # Collect non-skipped tests for this platform
+            platform_rows = []
             for test in tests:
                 test_id = test['test_name']
                 title = test.get('test_description', '')
 
-                # Get the most recent run to determine current status
+                # Get the most recent NON-SKIPPED run (exclude skipped tests per team policy)
                 query = """
                     SELECT status, job_url FROM test_results
                     WHERE test_name = ? AND platform = ? AND version = ?
+                      AND status != 'skipped'
                     ORDER BY timestamp DESC LIMIT 1
                 """
                 result = db.execute_query(query, [test['test_name'], platform, version])
 
-                # Determine status and URL from the latest run
+                # Skip tests that only have skipped runs
+                if not result or len(result) == 0:
+                    continue
+
+                # Determine status and URL from the latest non-skipped run
                 job_url = ''
                 status = 'Unknown'
                 if result and len(result) > 0:
@@ -1116,8 +1126,6 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                         status = 'Passed'
                     elif latest_status == 'failed':
                         status = 'Failed'
-                    elif latest_status == 'skipped':
-                        status = 'Skipped'
                     else:
                         status = latest_status.capitalize() if latest_status else 'Unknown'
 
@@ -1127,9 +1135,16 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                 # Format URL as markdown link
                 url_display = f'[Link]({job_url})' if job_url else ''
 
-                output.write(f'| {test_id} | {title} | {status} | {url_display} |\n')
+                platform_rows.append(f'| {test_id} | {title} | {status} | {url_display} |\n')
 
-            output.write('\n')
+            # Only add platform section if there are non-skipped tests
+            if platform_rows:
+                output.write(f'## {platform}\n\n')
+                output.write('| Test ID | Title | Status | Prow URL |\n')
+                output.write('|---------|-------|--------|----------|\n')
+                for row in platform_rows:
+                    output.write(row)
+                output.write('\n')
 
         # Convert to bytes
         output.seek(0)

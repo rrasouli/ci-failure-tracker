@@ -55,6 +55,10 @@ collector:
       - "rehearse-*-pull-ci-openshift-openshift-tests-private-release-{version}-*-winc-*"
       - "rehearse-*-pull-ci-openshift-windows-machine-config-operator-*-winc-*"
 
+      # vSphere proxy/disconnected variants (for proxy and disconnected testing)
+      - "periodic-ci-openshift-openshift-tests-private-release-{version}-*-vsphere-ipi-proxy-*-winc-*"
+      - "periodic-ci-openshift-openshift-tests-private-release-{version}-*-vsphere-ipi-disconnected-*-winc-*"
+
       # Postsubmit jobs (after merge)
       - "branch-ci-openshift-windows-machine-config-operator-*"
 
