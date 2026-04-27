@@ -23,10 +23,8 @@ class HybridFailureAnalyzer:
     def __init__(self):
         self.vertex_project_id = os.getenv('ANTHROPIC_VERTEX_PROJECT_ID')
         self.vertex_region = os.getenv('ANTHROPIC_VERTEX_REGION')
-        self.claude_api_key = os.getenv('CLAUDE_API_KEY')
 
-        # Initialize Anthropic client (for fallback)
-        # Supports both direct API and Vertex AI
+        # Initialize Vertex AI client
         if self.vertex_project_id and self.vertex_region:
             try:
                 import anthropic
@@ -37,21 +35,13 @@ class HybridFailureAnalyzer:
                 logger.info(f"Vertex AI client initialized (project: {self.vertex_project_id}, region: {self.vertex_region})")
             except ImportError:
                 self.claude_client = None
-                logger.warning("anthropic package not installed - API fallback unavailable")
+                logger.warning("anthropic[vertex] package not installed - run: pip install 'anthropic[vertex]'")
             except Exception as e:
                 self.claude_client = None
                 logger.warning(f"Failed to initialize Vertex AI client: {e}")
-        elif self.claude_api_key:
-            try:
-                import anthropic
-                self.claude_client = anthropic.Anthropic(api_key=self.claude_api_key)
-                logger.info("Anthropic API client initialized (fallback available)")
-            except ImportError:
-                self.claude_client = None
-                logger.warning("anthropic package not installed - API fallback unavailable")
         else:
             self.claude_client = None
-            logger.warning("Neither Vertex AI credentials nor CLAUDE_API_KEY set - API fallback unavailable")
+            logger.warning("Vertex AI credentials not set. Set ANTHROPIC_VERTEX_PROJECT_ID and ANTHROPIC_VERTEX_REGION environment variables.")
 
     def analyze_failure(
         self,
