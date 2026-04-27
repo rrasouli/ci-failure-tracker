@@ -127,7 +127,7 @@ class DashboardDatabase:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 test_name TEXT NOT NULL,
                 version TEXT NOT NULL,
-                platform TEXT NOT NULL,
+                platform TEXT,
                 analysis_date DATETIME NOT NULL,
                 root_cause TEXT,
                 component TEXT,
@@ -142,7 +142,7 @@ class DashboardDatabase:
                 analysis_mode TEXT,
                 cost REAL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(test_name, version, platform, analysis_date)
+                UNIQUE(test_name, version, analysis_date)
             )
         """)
 
@@ -495,16 +495,16 @@ class DashboardDatabase:
         self,
         test_name: str,
         version: str,
-        platform: str,
-        analysis: Dict[str, Any]
+        platform: str = None,
+        analysis: Dict[str, Any] = None
     ) -> int:
         """
-        Save AI analysis to database
+        Save AI analysis to database (shared across all platforms)
 
         Args:
             test_name: Test name
             version: OpenShift version
-            platform: Platform name
+            platform: Platform name (ignored - analysis is shared across platforms)
             analysis: Analysis dictionary with keys like root_cause, component, etc.
 
         Returns:
@@ -520,11 +520,10 @@ class DashboardDatabase:
                     platform_specific, affected_platforms, evidence,
                     suggested_action, issue_title, issue_description,
                     analysis_mode, cost
-                ) VALUES (?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, NULL, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 test_name,
                 version,
-                platform,
                 analysis.get('root_cause'),
                 analysis.get('component'),
                 analysis.get('confidence', 0),
@@ -549,16 +548,16 @@ class DashboardDatabase:
         self,
         test_name: str,
         version: str,
-        platform: str,
+        platform: str = None,
         days: int = 30
     ) -> Optional[Dict[str, Any]]:
         """
-        Get most recent AI analysis for a test
+        Get most recent AI analysis for a test (shared across all platforms)
 
         Args:
             test_name: Test name
             version: OpenShift version
-            platform: Platform name
+            platform: Platform name (ignored - analysis is shared across platforms)
             days: How many days back to look
 
         Returns:
@@ -570,11 +569,10 @@ class DashboardDatabase:
             SELECT * FROM ai_analyses
             WHERE test_name = ?
             AND version = ?
-            AND platform = ?
             AND analysis_date >= datetime('now', ? || ' days')
             ORDER BY analysis_date DESC
             LIMIT 1
-        """, (test_name, version, platform, f'-{days}'))
+        """, (test_name, version, f'-{days}'))
 
         row = cursor.fetchone()
         if row:
@@ -591,17 +589,17 @@ class DashboardDatabase:
         self,
         test_name: str,
         version: str,
-        platform: str,
-        classification: str,
+        platform: str = None,
+        classification: str = None,
         classified_by: str = 'user'
     ) -> int:
         """
-        Save manual classification for a test failure
+        Save manual classification for a test failure (applies to ALL platforms)
 
         Args:
             test_name: Test name
             version: OpenShift version
-            platform: Platform name
+            platform: Platform name (ignored - classification applies to all platforms)
             classification: Classification (product_bug, automation_bug, system_issue, transient, to_investigate)
             classified_by: Who classified it (default: 'user')
 
@@ -618,9 +616,8 @@ class DashboardDatabase:
                     classification_timestamp = datetime('now')
                 WHERE test_name = ?
                 AND version = ?
-                AND UPPER(platform) = UPPER(?)
                 AND status = 'failed'
-            """, (classification, classified_by, test_name, version, platform))
+            """, (classification, classified_by, test_name, version))
 
             self.conn.commit()
             return cursor.rowcount
@@ -633,16 +630,16 @@ class DashboardDatabase:
         self,
         test_name: str,
         version: str,
-        platform: str,
-        jira_issue_key: str
+        platform: str = None,
+        jira_issue_key: str = None
     ) -> int:
         """
-        Save Jira issue key for a test failure
+        Save Jira issue key for a test failure (applies to ALL platforms)
 
         Args:
             test_name: Test name
             version: OpenShift version
-            platform: Platform name
+            platform: Platform name (ignored - Jira issue applies to all platforms)
             jira_issue_key: Jira issue key (e.g., WINC-1866)
 
         Returns:
@@ -652,16 +649,15 @@ class DashboardDatabase:
 
         try:
             # Log for debugging
-            print(f"Saving Jira issue: {jira_issue_key} for test={test_name}, version={version}, platform={platform}")
+            print(f"Saving Jira issue: {jira_issue_key} for test={test_name}, version={version} (all platforms)")
 
             cursor.execute("""
                 UPDATE test_results
                 SET jira_issue_key = ?
                 WHERE test_name = ?
                 AND version = ?
-                AND UPPER(platform) = UPPER(?)
                 AND status = 'failed'
-            """, (jira_issue_key, test_name, version, platform))
+            """, (jira_issue_key, test_name, version))
 
             self.conn.commit()
             rows_updated = cursor.rowcount
