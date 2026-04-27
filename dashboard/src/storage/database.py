@@ -618,7 +618,7 @@ class DashboardDatabase:
                     classification_timestamp = datetime('now')
                 WHERE test_name = ?
                 AND version = ?
-                AND platform = ?
+                AND UPPER(platform) = UPPER(?)
                 AND status = 'failed'
             """, (classification, classified_by, test_name, version, platform))
 
