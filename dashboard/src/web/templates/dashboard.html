@@ -849,6 +849,12 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                         <h3 style="margin: 0;">Error Log</h3>
                         <div style="display: flex; gap: 10px;">
+                            {% if enable_ai %}
+                            <button id="aiAnalyzeBtn" onclick="runAIAnalysis()" style="background: #8b5cf6; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+                                AI Analyze
+                            </button>
+                            {% endif %}
                             <button id="jiraBtn" onclick="createJiraFromModal()" style="background: #0052CC; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px;">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84A.84.84 0 0 0 21.16 2h-9.63zM2.84 11.53c2.4 0 4.35-1.97 4.35-4.35V5.4h1.7c2.4 0 4.34-1.94 4.34-4.34H2.84A.84.84 0 0 0 2 1.9v9.63zM11.53 21.16c0-2.4 1.97-4.35 4.35-4.35h1.78v-1.7c0-2.4 1.94-4.34 4.34-4.34v9.55a.84.84 0 0 1-.84.84h-9.63z"/></svg>
                                 Create Jira
@@ -1045,10 +1051,21 @@
             // Reset Jira button
             const jiraBtn = document.getElementById('jiraBtn');
             if (jiraBtn) {
-                jiraBtn.innerHTML = 'Create Jira';
-                jiraBtn.style.background = '#3b82f6';
+                jiraBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84A.84.84 0 0 0 21.16 2h-9.63zM2.84 11.53c2.4 0 4.35-1.97 4.35-4.35V5.4h1.7c2.4 0 4.34-1.94 4.34-4.34H2.84A.84.84 0 0 0 2 1.9v9.63zM11.53 21.16c0-2.4 1.97-4.35 4.35-4.35h1.78v-1.7c0-2.4 1.94-4.34 4.34-4.34v9.55a.84.84 0 0 1-.84.84h-9.63z"/></svg> Create Jira';
+                jiraBtn.style.background = '#0052CC';
+                jiraBtn.onclick = createJiraFromModal;
                 jiraBtn.disabled = false;
             }
+
+            // Reset AI Analyze button
+            {% if enable_ai %}
+            const aiBtn = document.getElementById('aiAnalyzeBtn');
+            if (aiBtn) {
+                aiBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg> AI Analyze';
+                aiBtn.style.background = '#8b5cf6';
+                aiBtn.disabled = false;
+            }
+            {% endif %}
 
             // Load existing data (classification, Jira key, AI analysis)
             if (metadata && metadata.testName && metadata.version && metadata.platform) {
@@ -1313,8 +1330,10 @@
                         section.style.display = 'block';
                     }
                 } else {
-                    // No cached analysis - automatically run analysis
-                    runAIAnalysis();
+                    // No cached analysis - hide section (user can manually trigger)
+                    if (section) {
+                        section.style.display = 'none';
+                    }
                 }
                 {% endif %}
             } catch (error) {
@@ -1326,10 +1345,18 @@
         async function runAIAnalysis() {
             const section = document.getElementById('aiAnalysisSection');
             const content = document.getElementById('aiAnalysisContent');
+            const btn = document.getElementById('aiAnalyzeBtn');
 
             if (!currentLogData || !currentLogData.metadata) {
                 alert('No log data available');
                 return;
+            }
+
+            // Update button state
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = 'Analyzing...';
+                btn.style.background = '#9333ea';
             }
 
             section.style.display = 'block';
@@ -1380,11 +1407,29 @@
                             </div>
                         ` : ''}
                     `;
+                    // Update button to show success
+                    if (btn) {
+                        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10 15.586L6.707 12.293a1 1 0 0 0-1.414 1.414l4 4a1 1 0 0 0 1.414 0l8-8a1 1 0 0 0-1.414-1.414L10 15.586z"/></svg> Analyzed';
+                        btn.style.background = '#10b981';
+                        btn.disabled = false;
+                    }
                 } else {
                     content.innerHTML = `<div style="color: #dc2626; padding: 10px; background: #fee2e2; border-radius: 6px;">Error: ${data.error || 'Failed to analyze'}</div>`;
+                    // Reset button on error
+                    if (btn) {
+                        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg> AI Analyze';
+                        btn.style.background = '#8b5cf6';
+                        btn.disabled = false;
+                    }
                 }
             } catch (error) {
                 content.innerHTML = `<div style="color: #dc2626; padding: 10px; background: #fee2e2; border-radius: 6px;">Error: ${error.message}</div>`;
+                // Reset button on error
+                if (btn) {
+                    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg> AI Analyze';
+                    btn.style.background = '#8b5cf6';
+                    btn.disabled = false;
+                }
             }
         }
         {% endif %}
