@@ -723,7 +723,26 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             error_message = test_data[0] or 'No error message'
             log_url = test_data[1] or ''
 
-        # Analyze with hybrid approach
+        # Get pass rate for pre-classifier
+        pass_rate = None
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            cursor = db.conn.cursor()
+            cursor.execute("""
+                SELECT CAST(SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS REAL)
+                       / COUNT(*) * 100
+                FROM test_results
+                WHERE test_name = ? AND version = ?
+                AND timestamp >= ? AND timestamp <= ?
+            """, (test_name, version, start_date.isoformat(), end_date.isoformat()))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                pass_rate = row[0]
+        except Exception:
+            pass
+
+        # Analyze with pre-classifier + AI
         try:
             analyzer = HybridFailureAnalyzer()
             analysis = analyzer.analyze_failure(
@@ -731,7 +750,8 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
                 error_message=error_message,
                 log_url=log_url,
                 platform=platform,
-                version=version
+                version=version,
+                pass_rate=pass_rate
             )
 
             # Save analysis to database

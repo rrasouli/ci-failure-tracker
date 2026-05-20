@@ -1,5 +1,8 @@
 """
-REAL AI analyzer - uses only Claude (local or Vertex AI), NO pattern matching
+AI analyzer with SSH infrastructure pre-classifier.
+
+Pre-classifies SSH connectivity flakes as transient infrastructure issues
+before sending to Vertex AI, saving API cost and improving accuracy.
 """
 
 import os
@@ -10,6 +13,73 @@ import logging
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+SSH_PATTERNS = [
+    re.compile(r'SSH attempt \d+ failed', re.IGNORECASE),
+    re.compile(r'exit status 255'),
+    re.compile(r'ssh:.*connection refused', re.IGNORECASE),
+    re.compile(r'ssh:.*connection timed out', re.IGNORECASE),
+    re.compile(r'ssh:.*no route to host', re.IGNORECASE),
+    re.compile(r'bastion.*failed', re.IGNORECASE),
+    re.compile(r'bastion.*timed? out', re.IGNORECASE),
+    re.compile(r'failed to connect.*ssh', re.IGNORECASE),
+    re.compile(r'dial tcp.*:22.*connection refused', re.IGNORECASE),
+    re.compile(r'kex_exchange_identification', re.IGNORECASE),
+    re.compile(r'connection reset by.*port 22', re.IGNORECASE),
+]
+
+ASSERTION_PATTERNS = [
+    re.compile(r'Expected\s*$|o\.Expect\(', re.MULTILINE),
+    re.compile(r'e2e\.Failf\('),
+    re.compile(r'gomega.*to.*equal|gomega.*to.*contain', re.IGNORECASE),
+    re.compile(r'FAIL!.*Expected'),
+    re.compile(r'Unexpected error:'),
+]
+
+
+def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    """
+    Pre-classify SSH infrastructure flakes.
+
+    Returns a pre-built analysis dict if SSH flake detected, None otherwise.
+    """
+    if not error_message:
+        return None
+
+    ssh_matches = [p.pattern for p in SSH_PATTERNS if p.search(error_message)]
+    if not ssh_matches:
+        return None
+
+    assertion_reached = any(p.search(error_message) for p in ASSERTION_PATTERNS)
+
+    if assertion_reached:
+        return None
+
+    if pass_rate is not None and pass_rate < 65.0:
+        return None
+
+    logger.info(f"Pre-classified as SSH infrastructure flake (pass_rate={pass_rate}, ssh_patterns={len(ssh_matches)})")
+
+    return {
+        'root_cause': 'SSH connectivity failure to Windows node via bastion host. '
+                       'Test logic never reached an assertion -- the failure is purely infrastructure.',
+        'component': 'test-infrastructure (SSH connectivity)',
+        'confidence': 92,
+        'failure_type': 'transient',
+        'classification': 'transient',
+        'platform_specific': False,
+        'affected_platforms': [],
+        'evidence': '; '.join(ssh_matches[:3]),
+        'suggested_action': 'Retry. Track under WINC-1931 for SSH elimination.',
+        'issue_title': 'Transient: SSH connectivity flake to Windows node',
+        'issue_description': 'SSH connection to Windows node failed before test logic executed. '
+                             'This is a known transient infrastructure issue, not a product bug.',
+        'is_product_bug': False,
+        'pre_classified': True,
+        'pre_classifier': 'ssh_flake_detector',
+        'cost': 0.0,
+        'analysis_mode': 'pre-classifier',
+    }
 
 
 class HybridFailureAnalyzer:
@@ -49,13 +119,14 @@ class HybridFailureAnalyzer:
         error_message: str,
         log_url: str,
         platform: str,
-        version: str
+        version: str,
+        pass_rate: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        Analyze failure using Vertex AI (Claude via Google Cloud).
+        Analyze failure using pre-classifier + Vertex AI (Claude via Google Cloud).
 
-        NO pattern matching - REAL AI only.
-        Cost: ~$0.02 per analysis
+        Step 1: Check for known infrastructure patterns (SSH flakes) -- free, instant
+        Step 2: If not pre-classified, use Vertex AI (~$0.02 per analysis)
 
         Args:
             test_name: Test identifier (e.g., OCP-39030)
@@ -63,12 +134,19 @@ class HybridFailureAnalyzer:
             log_url: URL to build logs
             platform: Platform (aws, azure, gcp, etc.)
             version: OpenShift version
+            pass_rate: Test pass rate (used by pre-classifier to confirm transient)
 
         Returns:
             Analysis dictionary with root_cause, component, confidence, etc.
         """
 
-        # Use Vertex AI for analysis
+        # Step 1: Pre-classify known infrastructure patterns
+        pre_result = detect_ssh_flake(error_message, pass_rate)
+        if pre_result:
+            logger.info(f"Pre-classified {test_name} as SSH flake (skipping Vertex AI, saved ~$0.024)")
+            return pre_result
+
+        # Step 2: Use Vertex AI for analysis
         logger.info(f"Analyzing {test_name} with Vertex AI")
         api_result = self._try_api_analysis(
             test_name, error_message, log_url, platform, version
@@ -150,6 +228,12 @@ Provide analysis as JSON with these exact fields:
 - system_issue: Infrastructure/environment issues (network, storage, DNS, etc.)
 - transient: Flaky/intermittent issues, timing problems, resource contention
 - to_investigate: Not enough information to classify
+
+**SSH infrastructure flake detection:**
+If the logs show SSH connectivity failures (exit status 255, bastion timeouts, connection refused on port 22)
+AND the test never reached a real assertion (no Expect/Failf triggered), classify as "transient" with
+component "test-infrastructure (SSH connectivity)" -- NOT as a product bug in WMCO or hybrid-overlay.
+SSH flakes are infrastructure issues, not product bugs.
 
 Only return the JSON, no additional text.
 """

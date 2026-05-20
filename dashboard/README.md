@@ -79,9 +79,39 @@ database:
 ### Set Environment Variables
 
 ```bash
-# Required for ReportPortal
+# Required for ReportPortal collector
 export REPORTPORTAL_API_TOKEN="your-token-here"
+
+# Required for Prow GCS collector (qe-private-deck)
+export API_KEY="your-prow-token-here"
 ```
+
+### Prow GCS Token Setup
+
+The Prow GCS collector requires an OpenShift token from the l2s4 cluster to authenticate against qe-private-deck.
+
+**How to retrieve the token:**
+
+1. Open https://oauth-openshift.apps.ci.l2s4.p1.openshiftapps.com/oauth/token/request
+2. Log in with your Red Hat SSO credentials
+3. Click "Display Token"
+4. Copy the token value
+
+Note: `oc login` to the l2s4 cluster does not work (times out). The web UI method above is the only way to get the token.
+
+**Set as environment variable (local):**
+```bash
+export API_KEY="sha256~your-token-value"
+```
+
+**Set as OpenShift secret (deployment):**
+```bash
+oc create secret generic prow-token --from-literal=token="sha256~your-token-value"
+```
+
+Then reference it in your deployment config as the `API_KEY` environment variable.
+
+**Token renewal:** Tokens expire periodically. If data collection fails with 401/403 errors, repeat the steps above to get a new token. See [docs/token-renewal.md](docs/token-renewal.md) for details.
 
 ### Start Dashboard Locally
 

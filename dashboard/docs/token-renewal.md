@@ -10,24 +10,14 @@ When the dashboard shows authentication errors (HTTP 403), you need to renew the
 
 ## How to Renew the Token
 
-### Step 1: Login to QE Private Prow Cluster
+### Step 1: Get Token from Web UI
 
-```bash
-# Login to the cluster where QE Private Prow runs
-oc login https://api.ci.l2s4.p1.openshiftapps.com
+The `oc login` command does not work for the l2s4 cluster (times out). Use the web UI instead:
 
-# You may need to authenticate via SSO
-```
-
-### Step 2: Get Your Token
-
-```bash
-# Get your current OpenShift token
-oc whoami -t
-
-# Output will be something like:
-# sha256~EXAMPLE_TOKEN_REPLACE_WITH_YOUR_ACTUAL_TOKEN_FROM_OC_WHOAMI
-```
+1. Open https://oauth-openshift.apps.ci.l2s4.p1.openshiftapps.com/oauth/token/request
+2. Log in with your Red Hat SSO credentials
+3. Click "Display Token"
+4. Copy the token value (starts with `sha256~`)
 
 ### Step 3: Update the Secret
 
@@ -137,10 +127,10 @@ https://mirror.openshift.com/pub/openshift-v4/clients/ocp/latest/
 
 ### Error: "You must be logged in to the server (Unauthorized)"
 
-Your session expired. Re-login:
-```bash
-oc login https://api.ci.l2s4.p1.openshiftapps.com
-```
+Your token expired. Get a new one from the web UI:
+1. Open https://oauth-openshift.apps.ci.l2s4.p1.openshiftapps.com/oauth/token/request
+2. Click "Display Token"
+3. Copy and update the secret (see Step 2 above)
 
 ### Error: "secret 'prow-api-token' already exists"
 

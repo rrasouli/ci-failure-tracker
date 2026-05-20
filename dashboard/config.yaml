@@ -223,7 +223,6 @@ tracking:
   # ========================================================================
   blocklist:
     - "OCP-60944"  # Example: Removed from test suite
-    - "OCP-66352"  # Example: Not relevant to team
 
 # Database configuration
 database:
