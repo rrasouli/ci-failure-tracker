@@ -37,32 +37,62 @@ ASSERTION_PATTERNS = [
 ]
 
 
-def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None) -> Optional[Dict[str, Any]]:
+def _fetch_logs(log_url: str) -> str:
+    """Fetch build logs from URL, return empty string on failure."""
+    if not log_url:
+        return ''
+    try:
+        response = requests.get(log_url, timeout=10)
+        if response.status_code == 200:
+            return response.text
+    except Exception:
+        pass
+    return ''
+
+
+def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None, log_url: str = None) -> Optional[Dict[str, Any]]:
     """
     Pre-classify SSH infrastructure flakes.
 
+    Checks both the error_message and the build logs for SSH patterns.
     Returns a pre-built analysis dict if SSH flake detected, None otherwise.
     """
     if not error_message:
         return None
 
+    combined_text = error_message
+    logs = ''
     ssh_matches = [p.pattern for p in SSH_PATTERNS if p.search(error_message)]
+
+    if not ssh_matches and log_url:
+        logs = _fetch_logs(log_url)
+        if logs:
+            combined_text = error_message + '\n' + logs[-3000:]
+            ssh_matches = [p.pattern for p in SSH_PATTERNS if p.search(combined_text)]
+
     if not ssh_matches:
         return None
 
-    assertion_reached = any(p.search(error_message) for p in ASSERTION_PATTERNS)
+    assertion_in_error = any(p.search(error_message) for p in ASSERTION_PATTERNS)
+    ssh_in_error = any(p.search(error_message) for p in SSH_PATTERNS)
 
-    if assertion_reached:
+    if assertion_in_error and not ssh_in_error:
         return None
 
     if pass_rate is not None and pass_rate < 65.0:
         return None
 
-    logger.info(f"Pre-classified as SSH infrastructure flake (pass_rate={pass_rate}, ssh_patterns={len(ssh_matches)})")
+    ssh_only_in_logs = not ssh_in_error and len(ssh_matches) > 0
+    logger.info(f"Pre-classified as SSH infrastructure flake (pass_rate={pass_rate}, ssh_patterns={len(ssh_matches)}, ssh_in_logs_only={ssh_only_in_logs})")
+
+    root_cause = ('SSH connectivity failure to Windows node via bastion host. '
+                  'Test logic never reached an assertion -- the failure is purely infrastructure.')
+    if ssh_only_in_logs:
+        root_cause = ('SSH connectivity failures found in build logs caused downstream test assertion to fail. '
+                      'The test assertion failed because SSH to the Windows node was unstable, not due to a product bug.')
 
     return {
-        'root_cause': 'SSH connectivity failure to Windows node via bastion host. '
-                       'Test logic never reached an assertion -- the failure is purely infrastructure.',
+        'root_cause': root_cause,
         'component': 'test-infrastructure (SSH connectivity)',
         'confidence': 92,
         'failure_type': 'transient',
@@ -141,7 +171,7 @@ class HybridFailureAnalyzer:
         """
 
         # Step 1: Pre-classify known infrastructure patterns
-        pre_result = detect_ssh_flake(error_message, pass_rate)
+        pre_result = detect_ssh_flake(error_message, pass_rate, log_url)
         if pre_result:
             logger.info(f"Pre-classified {test_name} as SSH flake (skipping Vertex AI, saved ~$0.024)")
             return pre_result
