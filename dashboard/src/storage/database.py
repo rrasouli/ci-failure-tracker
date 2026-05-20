@@ -168,8 +168,42 @@ class DashboardDatabase:
         try:
             cursor.execute("ALTER TABLE test_results ADD COLUMN jira_issue_key TEXT")
         except sqlite3.OperationalError:
-            # Column already exists
             pass
+
+        # Migrate ai_analyses: make platform nullable and fix UNIQUE constraint
+        try:
+            cursor.execute("SELECT sql FROM sqlite_master WHERE name='ai_analyses'")
+            row = cursor.fetchone()
+            if row and 'platform TEXT NOT NULL' in row[0]:
+                cursor.execute("ALTER TABLE ai_analyses RENAME TO ai_analyses_old")
+                cursor.execute("""
+                    CREATE TABLE ai_analyses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        test_name TEXT NOT NULL,
+                        version TEXT NOT NULL,
+                        platform TEXT,
+                        analysis_date DATETIME NOT NULL,
+                        root_cause TEXT,
+                        component TEXT,
+                        confidence INTEGER,
+                        failure_type TEXT,
+                        platform_specific INTEGER,
+                        affected_platforms TEXT,
+                        evidence TEXT,
+                        suggested_action TEXT,
+                        issue_title TEXT,
+                        issue_description TEXT,
+                        analysis_mode TEXT,
+                        cost REAL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(test_name, version, analysis_date)
+                    )
+                """)
+                cursor.execute("DROP TABLE ai_analyses_old")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_analyses_test_name ON ai_analyses(test_name)")
+                logger.info("Migrated ai_analyses table: platform now nullable, UNIQUE constraint updated")
+        except Exception as e:
+            logger.warning(f"ai_analyses migration check: {e}")
 
         self.conn.commit()
 
