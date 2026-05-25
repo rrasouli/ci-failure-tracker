@@ -84,7 +84,7 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
         logger.info("Running health check...")
         collection_status['progress'] = 'Checking data source...'
         if not collector.health_check():
-            error_msg = 'Failed to connect to data source'
+            error_msg = getattr(collector, 'health_error', None) or 'Failed to connect to data source'
             logger.error(error_msg)
             collection_status['error'] = error_msg
             collection_status['running'] = False

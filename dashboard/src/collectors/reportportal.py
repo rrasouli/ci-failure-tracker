@@ -47,14 +47,21 @@ class ReportPortalCollector(BaseCollector):
         return "reportportal"
 
     def health_check(self) -> bool:
-        """Check if ReportPortal API is accessible"""
+        """Check if ReportPortal API is accessible. Sets self.health_error with details on failure."""
+        self.health_error = None
         try:
-            # Check the launch endpoint with minimal query
             url = f"{self.url}/api/v1/{self.project}/launch"
             params = {'page.size': 1}
             response = self.session.get(url, params=params, timeout=10)
-            return response.status_code == 200
-        except Exception:
+            if response.status_code == 401:
+                self.health_error = "ReportPortal token expired or invalid (HTTP 401). Update REPORTPORTAL_API_TOKEN."
+                return False
+            elif response.status_code != 200:
+                self.health_error = f"ReportPortal returned HTTP {response.status_code}"
+                return False
+            return True
+        except Exception as e:
+            self.health_error = f"Cannot reach ReportPortal: {e}"
             return False
 
     def _parse_timestamp(self, timestamp_value) -> datetime:

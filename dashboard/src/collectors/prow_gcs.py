@@ -78,7 +78,8 @@ class ProwGCSCollector(BaseCollector):
         return "prow-gcs"
 
     def health_check(self) -> bool:
-        """Check if Prow API is accessible"""
+        """Check if Prow API is accessible. Sets self.health_error with details on failure."""
+        self.health_error = None
         try:
             url = f"{self.prow_url}/prowjobs.js?var=allBuilds"
             logger.info(f"[prow_gcs] Health check URL: {url}")
@@ -86,22 +87,29 @@ class ProwGCSCollector(BaseCollector):
             logger.info(f"[prow_gcs] Health check response: status={response.status_code}")
 
             if response.status_code == 403:
-                logger.error(f"[prow_gcs] Authentication failed (HTTP 403)")
-                logger.error(f"[prow_gcs] The Prow API token is missing, invalid, or expired")
-                logger.error(f"[prow_gcs] To renew the token:")
-                logger.error(f"[prow_gcs]   1. Login to OpenShift cluster: oc login https://api.ci.l2s4.p1.openshiftapps.com")
-                logger.error(f"[prow_gcs]   2. Get new token: oc whoami -t")
-                logger.error(f"[prow_gcs]   3. Update secret: oc create secret generic prow-api-token --from-literal=token=YOUR_TOKEN --dry-run=client -o yaml | oc apply -f -")
-                logger.error(f"[prow_gcs]   4. Restart deployment: oc rollout restart deployment/winc-dashboard-zstream")
+                self.health_error = (
+                    "Prow API token expired or invalid (HTTP 403). "
+                    "Renew at: https://oauth-openshift.apps.ci.l2s4.p1.openshiftapps.com/oauth/token/request "
+                    "then update the prow-api-token secret and restart the deployment."
+                )
+                logger.error(f"[prow_gcs] {self.health_error}")
+                return False
+            elif response.status_code == 401:
+                self.health_error = (
+                    "Prow API token missing (HTTP 401). "
+                    "Set API_KEY environment variable or create prow-api-token secret."
+                )
+                logger.error(f"[prow_gcs] {self.health_error}")
                 return False
             elif response.status_code != 200:
-                logger.error(f"[prow_gcs] Health check failed: HTTP {response.status_code}")
-                logger.error(f"[prow_gcs] Response: {response.text[:500]}")
+                self.health_error = f"Prow API returned HTTP {response.status_code}"
+                logger.error(f"[prow_gcs] {self.health_error}")
                 return False
 
             return True
         except Exception as e:
-            logger.error(f"[prow_gcs] Health check failed with exception: {e}")
+            self.health_error = f"Cannot reach Prow API: {e}"
+            logger.error(f"[prow_gcs] {self.health_error}")
             import traceback
             logger.error(f"[prow_gcs] Traceback: {traceback.format_exc()}")
             return False

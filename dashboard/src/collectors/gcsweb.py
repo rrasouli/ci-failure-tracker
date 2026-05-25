@@ -61,12 +61,17 @@ class GCSWebCollector(BaseCollector):
         return "gcsweb"
 
     def health_check(self) -> bool:
-        """Check if gcsweb is accessible"""
+        """Check if gcsweb is accessible. Sets self.health_error with details on failure."""
+        self.health_error = None
         try:
             url = f"{self.GCSWEB_BASE_URL}/gcs/{self.BUCKET}/logs/"
             response = self.session.get(url, timeout=10)
-            return response.status_code == 200
-        except Exception:
+            if response.status_code != 200:
+                self.health_error = f"GCSWeb returned HTTP {response.status_code} - check URL: {self.GCSWEB_BASE_URL}"
+                return False
+            return True
+        except Exception as e:
+            self.health_error = f"Cannot reach GCSWeb: {e}"
             return False
 
     def _map_status(self, status: str) -> TestStatus:
