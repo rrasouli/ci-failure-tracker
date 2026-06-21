@@ -9,6 +9,8 @@ gcsweb URL: https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com
 
 import re
 import json
+import fnmatch
+import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -18,6 +20,8 @@ from html.parser import HTMLParser
 import requests
 
 from .base import BaseCollector, TestResult, JobRun, TestStatus
+
+logger = logging.getLogger(__name__)
 
 
 class GCSWebLinkParser(HTMLParser):
@@ -314,6 +318,37 @@ class GCSWebCollector(BaseCollector):
 
         return (raw_name.strip(), raw_name.strip())
 
+    def _resolve_patterns(self, patterns: List[str]) -> List[str]:
+        """
+        Resolve wildcard patterns to actual job names by listing the logs directory.
+        Exact names (no wildcards) are passed through unchanged.
+        """
+        exact = []
+        wildcards = []
+        for p in patterns:
+            if '*' in p or '?' in p:
+                wildcards.append(p)
+            else:
+                exact.append(p)
+
+        if not wildcards:
+            return exact
+
+        logger.info(f"[gcsweb] Resolving {len(wildcards)} wildcard pattern(s)...")
+        logs_path = f"/gcs/{self.BUCKET}/logs/"
+        all_jobs = self._list_directory(logs_path)
+
+        matched = set()
+        for link_path, link_text in all_jobs:
+            job_dir = link_text.rstrip('/')
+            for pattern in wildcards:
+                if fnmatch.fnmatch(job_dir, pattern):
+                    matched.add(job_dir)
+                    break
+
+        logger.info(f"[gcsweb] Wildcard patterns matched {len(matched)} job(s)")
+        return exact + sorted(matched)
+
     def collect_job_runs(
         self,
         start_date: datetime,
@@ -327,11 +362,13 @@ class GCSWebCollector(BaseCollector):
         if not job_patterns:
             raise ValueError("job_patterns is required")
 
+        resolved_jobs = self._resolve_patterns(job_patterns)
+
         job_runs = []
         max_workers = self.config.get('max_workers', 5)
 
-        # For each job pattern, list recent runs
-        for job_name in job_patterns:
+        # For each job, list recent runs
+        for job_name in resolved_jobs:
             runs = self._list_job_runs(job_name, start_date, end_date, max_results=50)
 
             # Process each run in parallel
@@ -432,10 +469,12 @@ class GCSWebCollector(BaseCollector):
         if not job_patterns:
             raise ValueError("job_patterns is required")
 
+        resolved_jobs = self._resolve_patterns(job_patterns)
+
         all_results = []
         max_workers = self.config.get('max_workers', 5)
 
-        for job_name in job_patterns:
+        for job_name in resolved_jobs:
             runs = self._list_job_runs(job_name, start_date, end_date, max_results=50)
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:

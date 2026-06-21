@@ -159,6 +159,12 @@ collector:
       - "periodic-ci-openshift-openshift-tests-private-release-5.0-amd64-nightly-nutanix-ipi-ovn-winc-f7"
       - "periodic-ci-openshift-openshift-tests-private-release-5.0-amd64-nightly-vsphere-ipi-ovn-winc-f7"
 
+      # main branch WINC jobs (maps to 5.0 via branch_version_map)
+      - "periodic-ci-openshift-openshift-tests-private-main-*-winc-*"
+
+      # Rehearse WINC jobs (wildcard patterns - resolved at collection time)
+      - "rehearse-*-periodic-ci-openshift-openshift-tests-private-*-winc-*"
+
     # How many recent builds to fetch per job (reduced for initial testing)
     max_builds_per_job: 20
 
