@@ -204,6 +204,10 @@ tracking:
     - "4.23"
     - "5.0"
 
+  # Map branch names to versions (e.g., "main" branch jobs map to "5.0")
+  branch_version_map:
+    main: "5.0"
+
   # ========================================================================
   # CUSTOMIZE: Cloud platforms to track for your team
   # Common platforms: aws, azure, gcp, vsphere, nutanix, metal, alibabacloud

@@ -101,10 +101,17 @@ class ReportPortalCollector(BaseCollector):
         """
         metadata = {'version': 'unknown', 'platform': 'unknown'}
 
-        # Extract version (e.g., 4.21, 4.22)
+        # Extract version from release-X.Y pattern
         version_match = re.search(r'release-(\d+\.\d+)', launch_name)
         if version_match:
             metadata['version'] = version_match.group(1)
+        else:
+            # Check branch_version_map for branch-based jobs (e.g., "main" -> "5.0")
+            branch_map = self.config.get('branch_version_map', {})
+            for branch, version in branch_map.items():
+                if f'-{branch}-' in launch_name or launch_name.endswith(f'-{branch}'):
+                    metadata['version'] = version
+                    break
 
         # Extract platform (aws, gcp, azure, vsphere, nutanix, etc.)
         platforms = ['aws', 'gcp', 'azure', 'vsphere', 'nutanix', 'metal', 'ovirt', 'openstack']

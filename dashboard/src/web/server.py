@@ -54,17 +54,27 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
         collector_type = config['collector']['type']
         logger.info(f"Using collector type: {collector_type}")
 
+        # Shared tracking config injected into collector config
+        tracking = config.get('tracking', {})
+        test_suite_filter = tracking.get('test_suite_filter', '')
+        branch_version_map = tracking.get('branch_version_map', {})
+
         if collector_type == 'reportportal':
             from collectors.reportportal import ReportPortalCollector
-            rp_config = config['collector']['reportportal']
+            rp_config = config['collector']['reportportal'].copy()
+            rp_config['test_suite_filter'] = test_suite_filter
+            rp_config['branch_version_map'] = branch_version_map
             collector = ReportPortalCollector(rp_config)
         elif collector_type == 'prow_mcp':
             from collectors.prow_mcp import ProwMCPCollector
-            mcp_config = config['collector']['prow_mcp']
+            mcp_config = config['collector']['prow_mcp'].copy()
+            mcp_config['branch_version_map'] = branch_version_map
             collector = ProwMCPCollector(mcp_config)
         elif collector_type == 'prow_gcs':
             from collectors.prow_gcs import ProwGCSCollector
-            gcs_config = config['collector']['prow_gcs']
+            gcs_config = config['collector']['prow_gcs'].copy()
+            gcs_config['test_suite_filter'] = test_suite_filter
+            gcs_config['branch_version_map'] = branch_version_map
             try:
                 collector = ProwGCSCollector(gcs_config)
             except Exception as e:
@@ -73,6 +83,12 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
                 collection_status['error'] = error_msg
                 collection_status['running'] = False
                 return
+        elif collector_type == 'gcsweb':
+            from collectors.gcsweb import GCSWebCollector
+            gcsweb_config = config['collector']['gcsweb'].copy()
+            gcsweb_config['test_suite_filter'] = test_suite_filter
+            gcsweb_config['branch_version_map'] = branch_version_map
+            collector = GCSWebCollector(gcsweb_config)
         else:
             error_msg = f'Unsupported collector type: {collector_type}'
             logger.error(error_msg)
@@ -113,6 +129,8 @@ def run_collection_background(db_path: str, config_file: str = 'config.yaml', da
         elif collector_type == 'prow_mcp':
             # prow_mcp uses exact job names from config
             expanded_patterns = None  # Will use job_names from collector config
+        elif collector_type == 'gcsweb':
+            expanded_patterns = config['collector']['gcsweb']['job_names']
         else:
             expanded_patterns = []
 
@@ -231,14 +249,18 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
     if config:
         app.config.update(config)
 
-    # Load tracking config for blocklist
+    # Load tracking config for blocklist and configured versions/platforms
     blocklist = []
+    config_versions = []
+    config_platforms = []
     try:
         with open(config_file, 'r') as f:
             yaml_config = yaml.safe_load(f)
             blocklist = yaml_config.get('tracking', {}).get('blocklist', [])
+            config_versions = yaml_config.get('tracking', {}).get('versions', [])
+            config_platforms = yaml_config.get('tracking', {}).get('platforms', [])
     except Exception as e:
-        print(f"Warning: Could not load blocklist from config: {e}")
+        print(f"Warning: Could not load tracking config: {e}")
 
     # Initialize database and calculator
     db = DashboardDatabase(db_path)
@@ -408,16 +430,23 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
 
     @app.route('/api/metadata')
     def api_metadata():
-        """Get available versions and platforms from database"""
+        """Get available versions and platforms from database + config"""
         query_versions = "SELECT DISTINCT version FROM job_runs ORDER BY version DESC"
         query_platforms = "SELECT DISTINCT platform FROM job_runs ORDER BY platform"
 
-        versions = [row['version'] for row in db.execute_query(query_versions)]
-        platforms = [row['platform'] for row in db.execute_query(query_platforms)]
+        db_versions = [row['version'] for row in db.execute_query(query_versions)]
+        db_platforms = [row['platform'] for row in db.execute_query(query_platforms)]
+
+        all_versions = sorted(
+            set(db_versions + config_versions),
+            key=lambda v: [int(x) for x in v.split('.')],
+            reverse=True
+        )
+        all_platforms = sorted(set(db_platforms + config_platforms))
 
         return jsonify({
-            'versions': versions,
-            'platforms': platforms
+            'versions': all_versions,
+            'platforms': all_platforms
         })
 
     @app.route('/api/summary')
