@@ -119,13 +119,15 @@ class ProwGCSCollector(BaseCollector):
         version = 'unknown'
         platform = 'unknown'
 
-        # Extract version (e.g., 4.21, 4.22)
-        # Note: main branch maps to 4.22 (current development version)
-        version_match = re.search(r'release-(4\.\d+)', job_name)
+        version_match = re.search(r'release-(\d+\.\d+)', job_name)
         if version_match:
             version = version_match.group(1)
-        elif '-main-' in job_name:
-            version = '4.22'
+        else:
+            branch_version_map = self.config.get('branch_version_map', {})
+            for branch, mapped_version in branch_version_map.items():
+                if f'-{branch}-' in job_name:
+                    version = mapped_version
+                    break
 
         # Extract platform
         platforms = ['aws', 'gcp', 'azure', 'vsphere', 'nutanix', 'metal']

@@ -75,11 +75,18 @@ collector:
     # Job patterns to monitor (supports wildcards: * matches any characters)
     # These patterns match periodic, pull, and rehearse WINC jobs
     job_patterns:
-      # Periodic (nightly) jobs
+      # Periodic (nightly) jobs - all tracked versions
+      - "periodic-ci-openshift-openshift-tests-private-release-4.19-*-winc-*"
       - "periodic-ci-openshift-openshift-tests-private-release-4.21-*-winc-*"
       - "periodic-ci-openshift-openshift-tests-private-release-4.22-*-winc-*"
+      - "periodic-ci-openshift-openshift-tests-private-release-4.23-*-winc-*"
+      - "periodic-ci-openshift-openshift-tests-private-release-5.0-*-winc-*"
+      - "periodic-ci-openshift-openshift-tests-private-main-*-winc-*"
+      - "periodic-ci-openshift-windows-machine-config-operator-release-4.19-*"
       - "periodic-ci-openshift-windows-machine-config-operator-release-4.21-*"
       - "periodic-ci-openshift-windows-machine-config-operator-release-4.22-*"
+      - "periodic-ci-openshift-windows-machine-config-operator-release-4.23-*"
+      - "periodic-ci-openshift-windows-machine-config-operator-release-5.0-*"
 
       # Pull request (presubmit) jobs
       - "pull-ci-openshift-openshift-tests-private-*-winc-*"
@@ -88,20 +95,7 @@ collector:
       # Rehearse jobs (test changes to CI config)
       - "rehearse-*-periodic-ci-openshift-openshift-tests-private-*-winc-*"
       - "rehearse-*-periodic-ci-openshift-windows-machine-config-operator-*"
-
-    # Job name patterns to monitor (exact job names, no wildcards in GCS paths)
-    # Use the actual Prow job names from your periodic jobs
-    job_names:
-      # 4.21 jobs
-      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-aws-winc-e2e"
-      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-gcp-winc-e2e"
-      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-azure-winc-e2e"
-      - "periodic-ci-openshift-openshift-tests-private-release-4.21-amd64-nutanix-winc-e2e"
-      # 4.22 jobs
-      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-aws-winc-e2e"
-      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-gcp-winc-e2e"
-      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-azure-winc-e2e"
-      - "periodic-ci-openshift-openshift-tests-private-release-4.22-amd64-nutanix-winc-e2e"
+      - "rehearse-*-pull-ci-openshift-openshift-tests-private-*-winc-*"
 
     # How many recent builds to fetch per job (default: 50)
     max_builds_per_job: 50
@@ -109,11 +103,11 @@ collector:
     # Parallel processing
     max_workers: 5
 
-  # gcsweb configuration (OpenShift CI web interface - no auth needed!)
+  # gcsweb configuration (QE Private Deck - requires API_KEY token)
   gcsweb:
-    # Base URL
-    url: "https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com"
-    bucket: "test-platform-results"
+    # Base URL (private instance for openshift-tests-private jobs)
+    url: "https://gcsweb-qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com"
+    bucket: "qe-private-deck"
 
     # WINC job names from ../release repo (exact names from Prow)
     job_names:

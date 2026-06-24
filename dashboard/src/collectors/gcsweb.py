@@ -2,11 +2,11 @@
 gcsweb HTML Scraper Collector
 
 Scrapes OpenShift CI's gcsweb interface to get Prow test results.
-No authentication required - publicly accessible.
-
-gcsweb URL: https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com
+Supports both public (gcsweb-ci) and private (gcsweb-qe-private-deck-ci) instances.
+Private instances require an API token via API_KEY environment variable.
 """
 
+import os
 import re
 import json
 import fnmatch
@@ -51,14 +51,20 @@ class GCSWebCollector(BaseCollector):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
 
-        # Use config values instead of hardcoded
-        self.GCSWEB_BASE_URL = config.get('url', 'https://gcsweb-ci.apps.ci.l2s4.p1.openshiftapps.com')
-        self.BUCKET = config.get('bucket', 'test-platform-results')
+        self.GCSWEB_BASE_URL = config.get('url', 'https://gcsweb-qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com')
+        self.BUCKET = config.get('bucket', 'qe-private-deck')
 
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'CI-Dashboard-Collector/1.0'
-        })
+        headers = {'User-Agent': 'CI-Dashboard-Collector/1.0'}
+
+        api_token = config.get('api_token') or os.environ.get('API_KEY')
+        if api_token:
+            headers['Authorization'] = f'Bearer {api_token}'
+            logger.info("[gcsweb] Using API token for authentication")
+        else:
+            logger.warning("[gcsweb] No API token found - private gcsweb instances will return 403")
+
+        self.session.headers.update(headers)
 
     @property
     def name(self) -> str:
@@ -70,6 +76,13 @@ class GCSWebCollector(BaseCollector):
         try:
             url = f"{self.GCSWEB_BASE_URL}/gcs/{self.BUCKET}/"
             response = self.session.get(url, timeout=30)
+            if response.status_code == 403:
+                self.health_error = (
+                    "GCSWeb returned HTTP 403 - API token expired or missing. "
+                    "Renew at: https://oauth-openshift.apps.ci.l2s4.p1.openshiftapps.com/oauth/token/request "
+                    "then set API_KEY environment variable on the deployment."
+                )
+                return False
             if response.status_code != 200:
                 self.health_error = f"GCSWeb returned HTTP {response.status_code} - check URL: {self.GCSWEB_BASE_URL}"
                 return False
@@ -270,7 +283,7 @@ class GCSWebCollector(BaseCollector):
                     version=metadata['version'],
                     platform=metadata['platform'],
                     test_description=test_description,
-                    job_url=f"https://prow.ci.openshift.org/view/gs/{self.BUCKET}/{job_name.replace('/gcs/' + self.BUCKET + '/logs/', '')}/{build_id}",
+                    job_url=f"https://qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com/view/gs/{self.BUCKET}/{job_name.replace('/gcs/' + self.BUCKET + '/logs/', '')}/{build_id}",
                     log_url=None
                 )
                 results.append(result)
@@ -450,7 +463,7 @@ class GCSWebCollector(BaseCollector):
             passed_tests=passed_tests,
             failed_tests=failed_tests,
             skipped_tests=skipped_tests,
-            job_url=f"https://prow.ci.openshift.org/view/gs/{self.BUCKET}/logs/{run['job_name']}/{run['build_id']}"
+            job_url=f"https://qe-private-deck-ci.apps.ci.l2s4.p1.openshiftapps.com/view/gs/{self.BUCKET}/logs/{run['job_name']}/{run['build_id']}"
         )
 
         return job_run
