@@ -219,22 +219,31 @@ class GCSWebCollector(BaseCollector):
         return None
 
     def _fetch_junit_xml_files(self, run_path: str) -> List[ET.Element]:
-        """Fetch and parse JUnit XML files for a job run"""
-        # List artifacts directory
-        artifacts_links = self._list_directory(f"{run_path}/artifacts/")
-
+        """Fetch and parse JUnit XML files for a job run (recursive search)"""
         junit_files = []
-        for link_path, link_text in artifacts_links:
-            if 'junit' in link_text.lower() and link_text.endswith('.xml'):
+        self._find_xml_recursive(f"{run_path}/artifacts/", junit_files, depth=0, max_depth=6)
+        return junit_files
+
+    def _find_xml_recursive(self, path: str, results: List[ET.Element], depth: int, max_depth: int):
+        """Recursively search for XML test result files in artifacts"""
+        if depth >= max_depth:
+            return
+
+        links = self._list_directory(path)
+
+        for link_path, link_text in links:
+            if link_text.endswith('.xml'):
                 content = self._fetch_file(link_path)
                 if content:
                     try:
                         root = ET.fromstring(content)
-                        junit_files.append(root)
+                        if root.tag in ('testsuites', 'testsuite'):
+                            results.append(root)
+                            logger.info(f"[gcsweb] Found JUnit XML: {link_text} at depth {depth}")
                     except ET.ParseError:
                         continue
-
-        return junit_files
+            elif link_text.endswith('/') and link_text not in ('../', './'):
+                self._find_xml_recursive(link_path, results, depth + 1, max_depth)
 
     def _parse_junit_xml(self, junit_root: ET.Element, job_name: str, build_id: str, metadata: Dict[str, str]) -> List[TestResult]:
         """Parse JUnit XML and extract test results"""
