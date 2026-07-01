@@ -39,10 +39,13 @@ skills:
 plugins:
   - plugins/pylsp
 
-runner_env:
-  CODE_ALLOWED_TARGET_BRANCHES: "${CODE_ALLOWED_TARGET_BRANCHES}"
-  FULLSEND_OUTPUT_SCHEMA: ${FULLSEND_DIR}/schemas/code-result.schema.json
-  FULLSEND_OUTPUT_FILE: code-result.json
+env:
+  runner:
+    CODE_ALLOWED_TARGET_BRANCHES: "${CODE_ALLOWED_TARGET_BRANCHES}"
+    FULLSEND_OUTPUT_SCHEMA: ${FULLSEND_DIR}/schemas/code-result.schema.json
+    FULLSEND_OUTPUT_FILE: code-result.json
+  sandbox:
+    PATH: "/sandbox/workspace/venv/bin:$PATH"
 
 timeout_minutes: 25
 
@@ -50,9 +53,10 @@ forge:
   github:
     pre_script: scripts/pre-code.sh
     post_script: scripts/post-code.sh
-    runner_env:
-      PUSH_TOKEN: "${PUSH_TOKEN}"
-      PUSH_TOKEN_SOURCE: "${PUSH_TOKEN_SOURCE}"
-      REPO_FULL_NAME: "${REPO_FULL_NAME}"
-      ISSUE_NUMBER: "${ISSUE_NUMBER}"
-      REPO_DIR: "${GITHUB_WORKSPACE}/target-repo"
+    env:
+      runner:
+        PUSH_TOKEN: "${PUSH_TOKEN}"
+        PUSH_TOKEN_SOURCE: "${PUSH_TOKEN_SOURCE}"
+        REPO_FULL_NAME: "${REPO_FULL_NAME}"
+        ISSUE_NUMBER: "${ISSUE_NUMBER}"
+        REPO_DIR: "${GITHUB_WORKSPACE}/target-repo"
