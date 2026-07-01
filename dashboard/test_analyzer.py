@@ -1,0 +1,320 @@
+"""Tests for AI failure analyzer.
+
+Validates pre-classifiers (SSH, DNS, quota), confidence thresholds,
+is_product_bug derivation, and response parsing.
+"""
+
+import json
+import pytest
+
+from src.ai.analyzer import (
+    detect_ssh_flake,
+    detect_infra_flake,
+    _apply_confidence_review,
+    _derive_is_product_bug,
+    LOW_CONFIDENCE_THRESHOLD,
+    HybridFailureAnalyzer,
+)
+
+
+class TestDetectSshFlake:
+    """Tests for SSH flake pre-classifier."""
+
+    def test_ssh_exit_status_255(self):
+        result = detect_ssh_flake("exit status 255", pass_rate=90.0)
+        assert result is not None
+        assert result['classification'] == 'transient'
+        assert result['is_product_bug'] is False
+        assert result['pre_classifier'] == 'ssh_flake_detector'
+
+    def test_ssh_connection_refused(self):
+        result = detect_ssh_flake(
+            "ssh: connection refused to host", pass_rate=80.0
+        )
+        assert result is not None
+        assert result['failure_type'] == 'transient'
+
+    def test_ssh_bastion_timeout(self):
+        result = detect_ssh_flake("bastion timed out", pass_rate=85.0)
+        assert result is not None
+        assert result['component'] == 'test-infrastructure (SSH connectivity)'
+
+    def test_no_ssh_pattern(self):
+        result = detect_ssh_flake("pod crashed with OOMKilled")
+        assert result is None
+
+    def test_empty_message(self):
+        result = detect_ssh_flake("")
+        assert result is None
+
+    def test_none_message(self):
+        result = detect_ssh_flake(None)
+        assert result is None
+
+    def test_low_pass_rate_skips(self):
+        """Low pass rate means failure is likely not transient."""
+        result = detect_ssh_flake("exit status 255", pass_rate=50.0)
+        assert result is None
+
+    def test_assertion_without_ssh_in_error_skips(self):
+        """Assertion in error but SSH only in logs should skip."""
+        msg = "Expected pod to be running\no.Expect(status)"
+        result = detect_ssh_flake(msg, pass_rate=90.0)
+        assert result is None
+
+
+class TestDetectInfraFlake:
+    """Tests for DNS and quota pre-classifiers."""
+
+    def test_dns_no_such_host(self):
+        result = detect_infra_flake("dial tcp: lookup foo: no such host")
+        assert result is not None
+        assert result['classification'] == 'system_issue'
+        assert result['pre_classifier'] == 'dns_flake_detector'
+        assert result['is_product_bug'] is False
+
+    def test_dns_temporary_failure(self):
+        result = detect_infra_flake(
+            "Temporary failure in name resolution"
+        )
+        assert result is not None
+        assert result['failure_type'] == 'system_issue'
+
+    def test_quota_exceeded(self):
+        result = detect_infra_flake("Error: quota exceeded for project")
+        assert result is not None
+        assert result['classification'] == 'system_issue'
+        assert result['pre_classifier'] == 'quota_detector'
+
+    def test_insufficient_capacity(self):
+        result = detect_infra_flake(
+            "InsufficientInstanceCapacity: not enough capacity"
+        )
+        assert result is not None
+        assert result['failure_type'] == 'system_issue'
+
+    def test_no_infra_pattern(self):
+        result = detect_infra_flake("assertion failed: expected 3, got 5")
+        assert result is None
+
+    def test_empty_message(self):
+        result = detect_infra_flake("")
+        assert result is None
+
+    def test_none_message(self):
+        result = detect_infra_flake(None)
+        assert result is None
+
+    def test_dns_with_assertion_only_in_error_skips(self):
+        """DNS only in logs + assertion in error message should skip."""
+        msg = "Expected pod to be ready\no.Expect(status)"
+        result = detect_infra_flake(msg)
+        assert result is None
+
+
+class TestApplyConfidenceReview:
+    """Tests for confidence threshold flagging."""
+
+    def test_low_confidence_flagged(self):
+        analysis = {'confidence': 40, 'is_product_bug': False}
+        result = _apply_confidence_review(analysis)
+        assert result['needs_human_review'] is True
+        assert 'Low confidence' in result['review_reason']
+
+    def test_high_confidence_not_flagged(self):
+        analysis = {'confidence': 85, 'is_product_bug': False}
+        result = _apply_confidence_review(analysis)
+        assert result['needs_human_review'] is False
+
+    def test_threshold_boundary_flagged(self):
+        analysis = {'confidence': LOW_CONFIDENCE_THRESHOLD - 1}
+        result = _apply_confidence_review(analysis)
+        assert result['needs_human_review'] is True
+
+    def test_threshold_boundary_not_flagged(self):
+        analysis = {'confidence': LOW_CONFIDENCE_THRESHOLD}
+        result = _apply_confidence_review(analysis)
+        assert result['needs_human_review'] is False
+
+    def test_low_confidence_clears_product_bug(self):
+        analysis = {
+            'confidence': 30,
+            'is_product_bug': True,
+        }
+        result = _apply_confidence_review(analysis)
+        assert result['is_product_bug'] is False
+        assert 'Product bug flag cleared' in result['review_reason']
+
+    def test_missing_confidence_treated_as_zero(self):
+        analysis = {}
+        result = _apply_confidence_review(analysis)
+        assert result['needs_human_review'] is True
+
+
+class TestDeriveIsProductBug:
+    """Tests for is_product_bug derivation."""
+
+    def test_product_bug_high_confidence(self):
+        analysis = {
+            'classification': 'product_bug',
+            'confidence': 85,
+        }
+        result = _derive_is_product_bug(analysis)
+        assert result['is_product_bug'] is True
+
+    def test_product_bug_low_confidence(self):
+        analysis = {
+            'classification': 'product_bug',
+            'confidence': 40,
+        }
+        result = _derive_is_product_bug(analysis)
+        assert result['is_product_bug'] is False
+
+    def test_transient_not_product_bug(self):
+        analysis = {
+            'classification': 'transient',
+            'confidence': 95,
+        }
+        result = _derive_is_product_bug(analysis)
+        assert result['is_product_bug'] is False
+
+    def test_system_issue_not_product_bug(self):
+        analysis = {
+            'classification': 'system_issue',
+            'confidence': 90,
+        }
+        result = _derive_is_product_bug(analysis)
+        assert result['is_product_bug'] is False
+
+    def test_automation_bug_not_product_bug(self):
+        analysis = {
+            'classification': 'automation_bug',
+            'confidence': 80,
+        }
+        result = _derive_is_product_bug(analysis)
+        assert result['is_product_bug'] is False
+
+    def test_uses_failure_type_fallback(self):
+        analysis = {
+            'failure_type': 'product_bug',
+            'confidence': 85,
+        }
+        result = _derive_is_product_bug(analysis)
+        assert result['is_product_bug'] is True
+
+
+class TestParseAnalysisResponse:
+    """Tests for AI response JSON parsing."""
+
+    def test_plain_json(self):
+        response = json.dumps({
+            'root_cause': 'Pod crashed',
+            'failure_type': 'product_bug',
+            'confidence': 80,
+        })
+        result = HybridFailureAnalyzer._parse_analysis_response(
+            response, 'aws'
+        )
+        assert result['root_cause'] == 'Pod crashed'
+        assert result['classification'] == 'product_bug'
+
+    def test_json_in_code_fence(self):
+        response = '```json\n{"root_cause": "DNS fail", "failure_type": "system_issue"}\n```'
+        result = HybridFailureAnalyzer._parse_analysis_response(
+            response, 'gcp'
+        )
+        assert result['root_cause'] == 'DNS fail'
+        assert result['classification'] == 'system_issue'
+
+    def test_json_in_plain_code_fence(self):
+        response = '```\n{"root_cause": "test bug", "failure_type": "automation_bug"}\n```'
+        result = HybridFailureAnalyzer._parse_analysis_response(
+            response, 'azure'
+        )
+        assert result['root_cause'] == 'test bug'
+
+    def test_unparseable_response(self):
+        response = "I cannot determine the cause of this failure."
+        result = HybridFailureAnalyzer._parse_analysis_response(
+            response, 'vsphere'
+        )
+        assert result['classification'] == 'to_investigate'
+        assert result['confidence'] == 30
+        assert result['needs_human_review'] is True
+        assert 'vsphere' in result['affected_platforms']
+
+    def test_empty_response(self):
+        result = HybridFailureAnalyzer._parse_analysis_response(
+            '', 'aws'
+        )
+        assert result['classification'] == 'to_investigate'
+
+    def test_classification_mapped_from_failure_type(self):
+        response = json.dumps({
+            'root_cause': 'Flaky',
+            'failure_type': 'transient',
+        })
+        result = HybridFailureAnalyzer._parse_analysis_response(
+            response, 'aws'
+        )
+        assert result['classification'] == 'transient'
+
+
+class TestAnalyzeFailureIntegration:
+    """Integration tests for the full analyze_failure flow."""
+
+    def test_ssh_flake_skips_vertex_ai(self):
+        """SSH flake should be pre-classified without calling Vertex AI."""
+        analyzer = HybridFailureAnalyzer()
+        result = analyzer.analyze_failure(
+            test_name='OCP-12345',
+            error_message='SSH attempt 3 failed with exit status 255',
+            log_url='',
+            platform='aws',
+            version='4.22',
+            pass_rate=90.0,
+        )
+        assert result['pre_classified'] is True
+        assert result['classification'] == 'transient'
+        assert result['cost'] == 0.0
+
+    def test_dns_flake_skips_vertex_ai(self):
+        """DNS failure should be pre-classified."""
+        analyzer = HybridFailureAnalyzer()
+        result = analyzer.analyze_failure(
+            test_name='OCP-99999',
+            error_message='dial tcp: lookup api.cluster: no such host',
+            log_url='',
+            platform='gcp',
+            version='4.23',
+        )
+        assert result['pre_classified'] is True
+        assert result['classification'] == 'system_issue'
+        assert result['cost'] == 0.0
+
+    def test_quota_flake_skips_vertex_ai(self):
+        """Quota exceeded should be pre-classified."""
+        analyzer = HybridFailureAnalyzer()
+        result = analyzer.analyze_failure(
+            test_name='OCP-88888',
+            error_message='QUOTA_EXCEEDED: cpu quota exceeded',
+            log_url='',
+            platform='gcp',
+            version='4.22',
+        )
+        assert result['pre_classified'] is True
+        assert result['classification'] == 'system_issue'
+        assert result['pre_classifier'] == 'quota_detector'
+
+    def test_no_client_returns_failed(self):
+        """Without Vertex AI client, non-infra failures return error."""
+        analyzer = HybridFailureAnalyzer()
+        result = analyzer.analyze_failure(
+            test_name='OCP-11111',
+            error_message='pod CrashLoopBackOff',
+            log_url='',
+            platform='aws',
+            version='4.22',
+        )
+        assert result['analysis_mode'] == 'failed'
+        assert result['needs_human_review'] is True

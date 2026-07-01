@@ -1,8 +1,11 @@
 """
-AI analyzer with SSH infrastructure pre-classifier.
+AI analyzer with infrastructure pre-classifiers and improved Vertex AI
+prompt engineering.
 
-Pre-classifies SSH connectivity flakes as transient infrastructure issues
-before sending to Vertex AI, saving API cost and improving accuracy.
+Pre-classifies known infrastructure failure patterns (SSH flakes, DNS
+failures, cloud quota errors) before sending to Vertex AI. For failures
+that reach the AI, uses structured prompts with historical context and
+chain-of-thought reasoning to improve classification accuracy.
 """
 
 import os
@@ -10,9 +13,12 @@ import re
 import requests
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
+
+# Confidence threshold below which results are flagged for human review
+LOW_CONFIDENCE_THRESHOLD = 60
 
 SSH_PATTERNS = [
     re.compile(r'SSH attempt \d+ failed', re.IGNORECASE),
@@ -26,6 +32,23 @@ SSH_PATTERNS = [
     re.compile(r'dial tcp.*:22.*connection refused', re.IGNORECASE),
     re.compile(r'kex_exchange_identification', re.IGNORECASE),
     re.compile(r'connection reset by.*port 22', re.IGNORECASE),
+]
+
+DNS_PATTERNS = [
+    re.compile(r'no such host', re.IGNORECASE),
+    re.compile(r'could not resolve host', re.IGNORECASE),
+    re.compile(r'dns lookup.*failed', re.IGNORECASE),
+    re.compile(r'Temporary failure in name resolution', re.IGNORECASE),
+    re.compile(r'server misbehaving', re.IGNORECASE),
+]
+
+QUOTA_PATTERNS = [
+    re.compile(r'quota.*exceeded', re.IGNORECASE),
+    re.compile(r'limit.*exceeded', re.IGNORECASE),
+    re.compile(r'InsufficientInstanceCapacity', re.IGNORECASE),
+    re.compile(r'CapacityReservation', re.IGNORECASE),
+    re.compile(r'QUOTA_EXCEEDED', re.IGNORECASE),
+    re.compile(r'ResourceQuotaExceeded', re.IGNORECASE),
 ]
 
 ASSERTION_PATTERNS = [
@@ -116,6 +139,131 @@ def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None, log_
     }
 
 
+def detect_infra_flake(error_message: str, log_url: str = None) -> Optional[Dict[str, Any]]:
+    """
+    Pre-classify DNS and cloud quota infrastructure failures.
+
+    Returns a pre-built analysis dict if an infrastructure pattern is
+    detected, None otherwise.
+    """
+    if not error_message:
+        return None
+
+    combined_text = error_message
+    if log_url:
+        logs = _fetch_logs(log_url)
+        if logs:
+            combined_text = error_message + '\n' + logs[-3000:]
+
+    # Check DNS failures
+    dns_matches = [p.pattern for p in DNS_PATTERNS if p.search(combined_text)]
+    if dns_matches:
+        assertion_in_error = any(p.search(error_message) for p in ASSERTION_PATTERNS)
+        dns_in_error = any(p.search(error_message) for p in DNS_PATTERNS)
+        if not (assertion_in_error and not dns_in_error):
+            logger.info("Pre-classified as DNS infrastructure flake "
+                        f"(dns_patterns={len(dns_matches)})")
+            return {
+                'root_cause': 'DNS resolution failure in CI environment. '
+                              'The test failed because cluster DNS was '
+                              'temporarily unavailable, not due to a '
+                              'product bug.',
+                'component': 'test-infrastructure (DNS)',
+                'confidence': 88,
+                'failure_type': 'system_issue',
+                'classification': 'system_issue',
+                'platform_specific': False,
+                'affected_platforms': [],
+                'evidence': '; '.join(dns_matches[:3]),
+                'suggested_action': 'Retry. If persistent, investigate '
+                                    'cluster DNS pods and config.',
+                'issue_title': 'System: DNS resolution failure in CI',
+                'issue_description': 'DNS resolution failed during test '
+                                     'execution. This is a CI '
+                                     'infrastructure issue.',
+                'is_product_bug': False,
+                'pre_classified': True,
+                'pre_classifier': 'dns_flake_detector',
+                'cost': 0.0,
+                'analysis_mode': 'pre-classifier',
+            }
+
+    # Check cloud quota failures
+    quota_matches = [p.pattern for p in QUOTA_PATTERNS if p.search(combined_text)]
+    if quota_matches:
+        logger.info("Pre-classified as cloud quota/capacity issue "
+                    f"(quota_patterns={len(quota_matches)})")
+        return {
+            'root_cause': 'Cloud provider quota or capacity limit '
+                          'exceeded. The test environment could not be '
+                          'provisioned due to resource constraints.',
+            'component': 'test-infrastructure (cloud quota)',
+            'confidence': 90,
+            'failure_type': 'system_issue',
+            'classification': 'system_issue',
+            'platform_specific': True,
+            'affected_platforms': [],
+            'evidence': '; '.join(quota_matches[:3]),
+            'suggested_action': 'Retry later or request quota increase '
+                                'from cloud provider.',
+            'issue_title': 'System: Cloud quota/capacity exceeded',
+            'issue_description': 'Cloud provider quota or instance '
+                                 'capacity was exceeded, preventing '
+                                 'test environment provisioning.',
+            'is_product_bug': False,
+            'pre_classified': True,
+            'pre_classifier': 'quota_detector',
+            'cost': 0.0,
+            'analysis_mode': 'pre-classifier',
+        }
+
+    return None
+
+
+def _apply_confidence_review(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flag low-confidence results for human review.
+
+    When the model's confidence is below the threshold, mark the result
+    so the dashboard can surface it for manual triage.
+    """
+    confidence = analysis.get('confidence', 0)
+    if confidence < LOW_CONFIDENCE_THRESHOLD:
+        analysis['needs_human_review'] = True
+        analysis['review_reason'] = (
+            f'Low confidence ({confidence}%). '
+            'Automated classification may be inaccurate.'
+        )
+        # Downgrade is_product_bug when confidence is low to avoid
+        # false-positive bug filings
+        if analysis.get('is_product_bug', False):
+            analysis['is_product_bug'] = False
+            analysis['review_reason'] += (
+                ' Product bug flag cleared pending human review.'
+            )
+    else:
+        analysis['needs_human_review'] = False
+
+    return analysis
+
+
+def _derive_is_product_bug(analysis: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Set is_product_bug consistently from classification and confidence.
+    """
+    classification = analysis.get('classification',
+                                  analysis.get('failure_type', ''))
+    confidence = analysis.get('confidence', 0)
+
+    # Only mark as product bug when classification says so AND
+    # confidence is above the review threshold
+    analysis['is_product_bug'] = (
+        classification == 'product_bug'
+        and confidence >= LOW_CONFIDENCE_THRESHOLD
+    )
+    return analysis
+
+
 class HybridFailureAnalyzer:
     """
     Real AI failure analyzer using Google Vertex AI.
@@ -180,27 +328,39 @@ class HybridFailureAnalyzer:
             logger.info(f"Pre-classified {test_name} as SSH flake (skipping Vertex AI, saved ~$0.024)")
             return pre_result
 
+        # Step 1b: Check DNS and quota infrastructure patterns
+        infra_result = detect_infra_flake(error_message, log_url)
+        if infra_result:
+            logger.info(f"Pre-classified {test_name} as infrastructure issue (skipping Vertex AI)")
+            return infra_result
+
         # Step 2: Use Vertex AI for analysis
         logger.info(f"Analyzing {test_name} with Vertex AI")
         api_result = self._try_api_analysis(
-            test_name, error_message, log_url, platform, version
+            test_name, error_message, log_url, platform, version,
+            pass_rate=pass_rate
         )
 
         if api_result:
-            logger.info(f"✓ Used Vertex AI (cost: ~$0.024) for {test_name}")
+            logger.info(f"Used Vertex AI (cost: ~$0.024) for {test_name}")
             api_result['cost'] = 0.024  # Approximate cost with Sonnet
             api_result['analysis_mode'] = 'vertex-ai'
+            # Post-process: derive is_product_bug and flag low confidence
+            api_result = _derive_is_product_bug(api_result)
+            api_result = _apply_confidence_review(api_result)
             return api_result
 
         # Vertex AI failed - return error
-        logger.error(f"✗ Vertex AI analysis failed for {test_name}")
+        logger.error(f"Vertex AI analysis failed for {test_name}")
         return {
             'error': 'Vertex AI analysis failed',
             'root_cause': 'Vertex AI analysis failed - check credentials and quota',
             'component': 'vertex-ai',
             'confidence': 0,
             'analysis_mode': 'failed',
-            'cost': 0.0
+            'cost': 0.0,
+            'needs_human_review': True,
+            'review_reason': 'AI analysis failed. Manual investigation required.',
         }
 
     def _try_api_analysis(
@@ -209,9 +369,10 @@ class HybridFailureAnalyzer:
         error_message: str,
         log_url: str,
         platform: str,
-        version: str
+        version: str,
+        pass_rate: Optional[float] = None
     ) -> Optional[Dict[str, Any]]:
-        """Fall back to Vertex AI API"""
+        """Analyze failure using Vertex AI with structured prompt."""
         try:
             if not self.claude_client:
                 logger.error("No Claude API client available")
@@ -222,48 +383,28 @@ class HybridFailureAnalyzer:
 
             logs_excerpt = logs[-3000:] if len(logs) > 3000 else logs
 
-            # Build prompt
-            prompt = f"""Analyze this Windows Containers test failure in OpenShift CI.
+            # Build historical context string
+            history_context = ""
+            if pass_rate is not None:
+                history_context = (
+                    f"\n**Historical pass rate:** {pass_rate:.1f}%"
+                )
+                if pass_rate >= 90.0:
+                    history_context += (
+                        " (usually passes — this failure is likely "
+                        "transient or a recent regression)"
+                    )
+                elif pass_rate < 50.0:
+                    history_context += (
+                        " (frequently failing — likely a persistent "
+                        "bug or systemic issue)"
+                    )
 
-**Test:** {test_name}
-**Platform:** {platform}
-**Version:** {version}
-**Error:** {error_message}
-
-**Build Logs (last 3000 chars):**
-```
-{logs_excerpt}
-```
-
-Provide analysis as JSON with these exact fields:
-{{
-  "root_cause": "1-2 sentence description of what caused the failure",
-  "component": "affected component name (e.g., windows-machine-config-operator, kubelet, csi-driver)",
-  "confidence": 85,
-  "failure_type": "product_bug OR automation_bug OR system_issue OR transient OR to_investigate",
-  "platform_specific": true,
-  "affected_platforms": ["azure"],
-  "evidence": "Key log lines that show the problem",
-  "suggested_action": "What should be done next",
-  "issue_title": "Bug: [brief description]",
-  "issue_description": "Detailed description for Jira/GitHub issue"
-}}
-
-**Classification guidelines:**
-- product_bug: Bug in OpenShift/Windows Container product code
-- automation_bug: Bug in the test automation code itself (e.g., wrong assertions, test setup issues)
-- system_issue: Infrastructure/environment issues (network, storage, DNS, etc.)
-- transient: Flaky/intermittent issues, timing problems, resource contention
-- to_investigate: Not enough information to classify
-
-**SSH infrastructure flake detection:**
-If the logs show SSH connectivity failures (exit status 255, bastion timeouts, connection refused on port 22)
-AND the test never reached a real assertion (no Expect/Failf triggered), classify as "transient" with
-component "test-infrastructure (SSH connectivity)" -- NOT as a product bug in WMCO or hybrid-overlay.
-SSH flakes are infrastructure issues, not product bugs.
-
-Only return the JSON, no additional text.
-"""
+            # Build prompt with chain-of-thought reasoning
+            prompt = self._build_analysis_prompt(
+                test_name, error_message, logs_excerpt,
+                platform, version, history_context
+            )
 
             # Call Claude API
             response = self.claude_client.messages.create(
@@ -277,42 +418,166 @@ Only return the JSON, no additional text.
 
             # Parse response
             response_text = response.content[0].text
-
-            # Extract JSON from response
-            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-            if json_match:
-                analysis = json.loads(json_match.group(1))
-                # Map failure_type to classification for frontend compatibility
-                if 'failure_type' in analysis:
-                    analysis['classification'] = analysis['failure_type']
-                logger.debug(f"API analysis succeeded: {analysis.get('root_cause', '')[:100]}")
-                return analysis
-
-            # Try parsing entire response as JSON
-            try:
-                analysis = json.loads(response_text)
-                # Map failure_type to classification for frontend compatibility
-                if 'failure_type' in analysis:
-                    analysis['classification'] = analysis['failure_type']
-                logger.debug(f"API analysis (direct JSON): {analysis.get('root_cause', '')[:100]}")
-                return analysis
-            except json.JSONDecodeError:
-                # Fallback: return raw text
-                logger.warning("Could not parse API response as JSON, returning raw text")
-                return {
-                    'root_cause': response_text[:200],
-                    'raw_analysis': response_text,
-                    'component': 'unknown',
-                    'confidence': 50,
-                    'classification': 'to_investigate',
-                    'failure_type': 'to_investigate',
-                    'platform_specific': False,
-                    'affected_platforms': [platform],
-                    'evidence': 'See raw_analysis',
-                    'suggested_action': 'Manual investigation needed'
-                }
+            analysis = self._parse_analysis_response(
+                response_text, platform
+            )
+            return analysis
 
         except Exception as e:
             logger.error(f"API analysis error: {e}")
             return None
+
+    def _build_analysis_prompt(
+        self,
+        test_name: str,
+        error_message: str,
+        logs_excerpt: str,
+        platform: str,
+        version: str,
+        history_context: str
+    ) -> str:
+        """Build the structured analysis prompt for Vertex AI."""
+        return f"""Analyze this OpenShift CI test failure step by step.
+
+## Test Context
+- **Test:** {test_name}
+- **Platform:** {platform}
+- **Version:** {version}{history_context}
+
+## Error Message
+```
+{error_message}
+```
+
+## Build Logs (last 3000 chars)
+```
+{logs_excerpt}
+```
+
+## Instructions
+
+Think through the analysis in two steps:
+
+**Step 1 — Identify the failure mechanism:**
+- What specific error or exception caused the test to fail?
+- Did the test reach a real assertion (Expect, Failf, gomega matcher),
+  or did it fail before test logic executed?
+- Are there infrastructure signals (SSH errors, DNS failures, timeouts,
+  quota limits) in the logs?
+
+**Step 2 — Classify based on evidence:**
+
+Choose exactly one failure_type from these categories. Read each
+description carefully before deciding:
+
+- **product_bug**: A defect in OpenShift or Windows Container product
+  code (WMCO, kubelet, hybrid-overlay, CSI driver, etc.). The test
+  assertion failed because the product behaved incorrectly. Look for
+  assertion failures comparing actual vs expected product behavior.
+
+- **automation_bug**: A defect in the test code itself. The test has
+  wrong assertions, incorrect setup/teardown, hardcoded values that
+  don't match the environment, or race conditions in test logic. The
+  product may be working correctly but the test is broken.
+
+- **system_issue**: An infrastructure or environment problem — cloud
+  provider outages, DNS failures, storage unavailability, node
+  provisioning failures, certificate expiry, or cluster installation
+  failures. The product and tests may both be correct, but the
+  environment is broken.
+
+- **transient**: An intermittent/flaky failure caused by timing,
+  resource contention, or temporary connectivity issues. Key signals:
+  the test usually passes (high pass rate), SSH connection failures
+  with exit status 255, brief network blips, or pod scheduling
+  delays. If SSH connectivity failed and the test never reached a
+  real assertion, this is transient — not a product bug.
+
+- **to_investigate**: There is genuinely not enough information in the
+  error message and logs to classify. Use this only as a last resort.
+  Set confidence below 50 when using this category.
+
+## Key Distinctions
+
+- SSH/bastion failures (exit status 255, connection refused on port 22)
+  with no test assertion reached → **transient**, component
+  "test-infrastructure (SSH connectivity)"
+- DNS resolution failures → **system_issue**
+- Cloud quota/capacity exceeded → **system_issue**
+- Test assertion comparing wrong expected value → **automation_bug**
+- Pod CrashLoopBackOff with product container logs showing a panic →
+  **product_bug**
+- Timeout waiting for a condition that intermittently takes too long →
+  **transient** (if pass rate is high) or **product_bug** (if pass rate
+  is low and timeout is generous)
+
+## Required Output
+
+Return ONLY a JSON object (no markdown fencing, no extra text):
+{{
+  "root_cause": "1-2 sentence description of what caused the failure",
+  "component": "affected component (e.g., windows-machine-config-operator, kubelet, test-infrastructure)",
+  "confidence": <0-100 integer>,
+  "failure_type": "<one of: product_bug, automation_bug, system_issue, transient, to_investigate>",
+  "platform_specific": <true or false>,
+  "affected_platforms": ["<platform names if platform_specific>"],
+  "evidence": "Key log lines or error patterns that support your classification",
+  "suggested_action": "Concrete next step for the team",
+  "issue_title": "<Type>: <brief description>",
+  "issue_description": "Detailed description for a tracking issue"
+}}
+
+Set confidence to reflect how certain you are about the classification:
+- 90-100: Clear-cut, strong evidence for exactly one category
+- 70-89: Likely correct, but some ambiguity
+- 50-69: Uncertain, multiple categories could apply
+- Below 50: Guessing, insufficient evidence
+"""
+
+    @staticmethod
+    def _parse_analysis_response(
+        response_text: str, platform: str
+    ) -> Optional[Dict[str, Any]]:
+        """Parse the AI response into a structured analysis dict."""
+        # Try extracting JSON from markdown code fence
+        json_match = re.search(
+            r'```(?:json)?\s*(\{.*?\})\s*```',
+            response_text, re.DOTALL
+        )
+        if json_match:
+            try:
+                analysis = json.loads(json_match.group(1))
+                if 'failure_type' in analysis:
+                    analysis['classification'] = analysis['failure_type']
+                return analysis
+            except json.JSONDecodeError:
+                pass
+
+        # Try parsing entire response as JSON
+        try:
+            analysis = json.loads(response_text.strip())
+            if 'failure_type' in analysis:
+                analysis['classification'] = analysis['failure_type']
+            return analysis
+        except json.JSONDecodeError:
+            pass
+
+        # Fallback: return raw text with low confidence
+        logger.warning(
+            "Could not parse API response as JSON, returning raw text"
+        )
+        return {
+            'root_cause': response_text[:200],
+            'raw_analysis': response_text,
+            'component': 'unknown',
+            'confidence': 30,
+            'classification': 'to_investigate',
+            'failure_type': 'to_investigate',
+            'platform_specific': False,
+            'affected_platforms': [platform],
+            'evidence': 'See raw_analysis',
+            'suggested_action': 'Manual investigation needed',
+            'needs_human_review': True,
+            'review_reason': 'AI response could not be parsed as JSON.',
+        }
 
