@@ -39,12 +39,12 @@ DNS_PATTERNS = [
     re.compile(r'could not resolve host', re.IGNORECASE),
     re.compile(r'dns lookup.*failed', re.IGNORECASE),
     re.compile(r'Temporary failure in name resolution', re.IGNORECASE),
-    re.compile(r'server misbehaving', re.IGNORECASE),
+    re.compile(r'lookup.*server misbehaving', re.IGNORECASE),
 ]
 
 QUOTA_PATTERNS = [
     re.compile(r'quota.*exceeded', re.IGNORECASE),
-    re.compile(r'limit.*exceeded', re.IGNORECASE),
+    re.compile(r'(?:resource|cpu|memory|storage|instance|vcpu).*limit.*exceeded', re.IGNORECASE),
     re.compile(r'InsufficientInstanceCapacity', re.IGNORECASE),
     re.compile(r'CapacityReservation', re.IGNORECASE),
     re.compile(r'QUOTA_EXCEEDED', re.IGNORECASE),
@@ -77,7 +77,7 @@ def _fetch_logs(log_url: str) -> str:
     return ''
 
 
-def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None, log_url: str = None) -> Optional[Dict[str, Any]]:
+def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None, log_url: str = None, log_text: str = None) -> Optional[Dict[str, Any]]:
     """
     Pre-classify SSH infrastructure flakes.
 
@@ -88,11 +88,12 @@ def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None, log_
         return None
 
     combined_text = error_message
-    logs = ''
+    logs = log_text if log_text is not None else ''
     ssh_matches = [p.pattern for p in SSH_PATTERNS if p.search(error_message)]
 
-    if not ssh_matches and log_url:
-        logs = _fetch_logs(log_url)
+    if not ssh_matches:
+        if not logs and log_url:
+            logs = _fetch_logs(log_url)
         if logs:
             combined_text = error_message + '\n' + logs[-3000:]
             ssh_matches = [p.pattern for p in SSH_PATTERNS if p.search(combined_text)]
@@ -139,21 +140,26 @@ def detect_ssh_flake(error_message: str, pass_rate: Optional[float] = None, log_
     }
 
 
-def detect_infra_flake(error_message: str, log_url: str = None) -> Optional[Dict[str, Any]]:
+def detect_infra_flake(error_message: str, log_url: str = None, log_text: str = None) -> Optional[Dict[str, Any]]:
     """
     Pre-classify DNS and cloud quota infrastructure failures.
 
     Returns a pre-built analysis dict if an infrastructure pattern is
     detected, None otherwise.
+
+    Unlike detect_ssh_flake, this has no pass_rate gate. DNS failures are
+    always infrastructure regardless of pass rate. Quota errors similarly
+    indicate environment constraints, not product behavior.
     """
     if not error_message:
         return None
 
     combined_text = error_message
-    if log_url:
+    logs = log_text if log_text is not None else ''
+    if not logs and log_url:
         logs = _fetch_logs(log_url)
-        if logs:
-            combined_text = error_message + '\n' + logs[-3000:]
+    if logs:
+        combined_text = error_message + '\n' + logs[-3000:]
 
     # Check DNS failures
     dns_matches = [p.pattern for p in DNS_PATTERNS if p.search(combined_text)]
@@ -230,10 +236,17 @@ def _apply_confidence_review(analysis: Dict[str, Any]) -> Dict[str, Any]:
     confidence = analysis.get('confidence', 0)
     if confidence < LOW_CONFIDENCE_THRESHOLD:
         analysis['needs_human_review'] = True
-        analysis['review_reason'] = (
+        existing_reason = analysis.get('review_reason')
+        low_conf_reason = (
             f'Low confidence ({confidence}%). '
             'Automated classification may be inaccurate.'
         )
+        if existing_reason:
+            analysis['review_reason'] = (
+                f'{existing_reason} {low_conf_reason}'
+            )
+        else:
+            analysis['review_reason'] = low_conf_reason
         # Downgrade is_product_bug when confidence is low to avoid
         # false-positive bug filings
         if analysis.get('is_product_bug', False):
@@ -323,13 +336,16 @@ class HybridFailureAnalyzer:
         """
 
         # Step 1: Pre-classify known infrastructure patterns
-        pre_result = detect_ssh_flake(error_message, pass_rate, log_url)
+        # Fetch logs once for all pre-classifiers to avoid duplicate requests
+        logs = _fetch_logs(log_url) if log_url else ''
+
+        pre_result = detect_ssh_flake(error_message, pass_rate, log_text=logs)
         if pre_result:
             logger.info(f"Pre-classified {test_name} as SSH flake (skipping Vertex AI, saved ~$0.024)")
             return pre_result
 
         # Step 1b: Check DNS and quota infrastructure patterns
-        infra_result = detect_infra_flake(error_message, log_url)
+        infra_result = detect_infra_flake(error_message, log_text=logs)
         if infra_result:
             logger.info(f"Pre-classified {test_name} as infrastructure issue (skipping Vertex AI)")
             return infra_result
@@ -437,7 +453,7 @@ class HybridFailureAnalyzer:
         history_context: str
     ) -> str:
         """Build the structured analysis prompt for Vertex AI."""
-        return f"""Analyze this OpenShift CI test failure step by step.
+        return f"""Analyze this Windows Containers OpenShift CI test failure step by step.
 
 ## Test Context
 - **Test:** {test_name}

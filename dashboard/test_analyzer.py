@@ -93,6 +93,30 @@ class TestDetectInfraFlake:
         assert result is not None
         assert result['failure_type'] == 'system_issue'
 
+    def test_broad_limit_exceeded_not_matched(self):
+        """Generic 'limit exceeded' should not match quota patterns."""
+        result = detect_infra_flake("timeout limit exceeded")
+        assert result is None
+
+    def test_resource_limit_exceeded_matched(self):
+        """Resource-qualified 'limit exceeded' should match."""
+        result = detect_infra_flake("cpu limit exceeded for instance")
+        assert result is not None
+        assert result['pre_classifier'] == 'quota_detector'
+
+    def test_server_misbehaving_without_lookup_not_matched(self):
+        """Plain 'server misbehaving' should not match DNS patterns."""
+        result = detect_infra_flake("API server misbehaving")
+        assert result is None
+
+    def test_server_misbehaving_with_lookup_matched(self):
+        """DNS-context 'lookup ... server misbehaving' should match."""
+        result = detect_infra_flake(
+            "dial tcp: lookup api.cluster on 10.0.0.1:53: server misbehaving"
+        )
+        assert result is not None
+        assert result['pre_classifier'] == 'dns_flake_detector'
+
     def test_no_infra_pattern(self):
         result = detect_infra_flake("assertion failed: expected 3, got 5")
         assert result is None
@@ -149,6 +173,16 @@ class TestApplyConfidenceReview:
         analysis = {}
         result = _apply_confidence_review(analysis)
         assert result['needs_human_review'] is True
+
+    def test_preserves_existing_review_reason(self):
+        """Existing review_reason should not be overwritten."""
+        analysis = {
+            'confidence': 30,
+            'review_reason': 'AI response could not be parsed as JSON.',
+        }
+        result = _apply_confidence_review(analysis)
+        assert 'AI response could not be parsed as JSON.' in result['review_reason']
+        assert 'Low confidence' in result['review_reason']
 
 
 class TestDeriveIsProductBug:
