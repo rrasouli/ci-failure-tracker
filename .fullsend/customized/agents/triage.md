@@ -92,7 +92,13 @@ For collector issues, check:
 
 ## Step 4: Produce triage result
 
-Write a JSON result to `$FULLSEND_OUTPUT_FILE` following the triage-result schema.
+Write the result as JSON to `$FULLSEND_OUTPUT_DIR/agent-result.json`.
+
+After writing, validate:
+```
+fullsend-check-output "$FULLSEND_OUTPUT_DIR/agent-result.json"
+```
+If validation fails, read the error output, fix the JSON file, and re-validate.
 
 ### Label mapping for this project
 
