@@ -552,14 +552,30 @@
     </div>
     <div class="container">
         <header>
-            <div class="header-title">
-                <svg class="header-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                    <path fill="#ee0000" d="M12 0L3 7v10l9 7 9-7V7L12 0zm0 2.5L18.5 8v8L12 21.5 5.5 16V8L12 2.5z"/>
-                    <path fill="#ee0000" d="M12 6L8 9v6l4 3 4-3V9l-4-3z"/>
-                </svg>
-                <h1>CI Test Pass Rate Dashboard</h1>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <div class="header-title">
+                        <svg class="header-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                            <path fill="#ee0000" d="M12 0L3 7v10l9 7 9-7V7L12 0zm0 2.5L18.5 8v8L12 21.5 5.5 16V8L12 2.5z"/>
+                            <path fill="#ee0000" d="M12 6L8 9v6l4 3 4-3V9l-4-3z"/>
+                        </svg>
+                        <h1>CI Test Pass Rate Dashboard</h1>
+                    </div>
+                    <p class="subtitle">Windows Containers QE - OpenShift CI Test Results</p>
+                </div>
+                <button onclick="openReportModal()" style="
+                    padding: 8px 16px;
+                    border: 1px solid #dc2626;
+                    background: white;
+                    color: #dc2626;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    margin-top: 5px;
+                ">Report a Problem</button>
             </div>
-            <p class="subtitle">Windows Containers QE - OpenShift CI Test Results</p>
             <div style="margin-top: 15px;">
                 <button class="tab-button active" onclick="showTab('overview')">Overview</button>
                 <button class="tab-button" onclick="showTab('weekly-report')">Weekly Report</button>
@@ -867,9 +883,114 @@
         </div>
     </div>
 
+    <!-- Report a Problem Modal -->
+    <div id="reportModal" class="modal" onclick="if(event.target===this)closeReportModal()">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header" style="background: #dc2626;">
+                <h2>Report a Problem</h2>
+                <span class="close" onclick="closeReportModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 16px;">
+                    <label for="reportSummary" style="display: block; font-weight: 600; margin-bottom: 6px;">Summary</label>
+                    <input type="text" id="reportSummary" placeholder="Brief description of the problem" style="
+                        width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+                        font-size: 14px; box-sizing: border-box;
+                    ">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label for="reportDescription" style="display: block; font-weight: 600; margin-bottom: 6px;">Description</label>
+                    <textarea id="reportDescription" rows="6" placeholder="Steps to reproduce, expected vs actual behavior" style="
+                        width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+                        font-size: 14px; font-family: inherit; resize: vertical; box-sizing: border-box;
+                    "></textarea>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button onclick="closeReportModal()" style="
+                        padding: 10px 20px; border: 1px solid #d1d5db; background: white;
+                        border-radius: 6px; cursor: pointer; font-size: 14px;
+                    ">Cancel</button>
+                    <button id="reportSubmitBtn" onclick="submitReport()" style="
+                        padding: 10px 20px; border: none; background: #dc2626; color: white;
+                        border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600;
+                    ">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let trendChart, versionChart;
         let currentLogData = {}; // Store current log data for AI analysis and Jira creation
+
+        function openReportModal() {
+            document.getElementById('reportModal').style.display = 'block';
+            document.getElementById('reportSummary').value = '';
+            document.getElementById('reportDescription').value = '';
+            const btn = document.getElementById('reportSubmitBtn');
+            btn.textContent = 'Submit';
+            btn.disabled = false;
+            btn.style.background = '#dc2626';
+            btn.onclick = submitReport;
+            document.getElementById('reportSummary').focus();
+        }
+
+        function closeReportModal() {
+            document.getElementById('reportModal').style.display = 'none';
+        }
+
+        async function submitReport() {
+            const summary = document.getElementById('reportSummary').value.trim();
+            const description = document.getElementById('reportDescription').value.trim();
+
+            if (!summary || !description) {
+                alert('Please fill in both summary and description.');
+                return;
+            }
+
+            const btn = document.getElementById('reportSubmitBtn');
+            btn.textContent = 'Creating...';
+            btn.disabled = true;
+            btn.style.background = '#9ca3af';
+
+            try {
+                const response = await fetch('/api/jira/report-problem', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ summary, description })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'disabled') {
+                    alert('Jira integration not enabled. Set JIRA_API_TOKEN environment variable.');
+                    btn.textContent = 'Submit';
+                    btn.disabled = false;
+                    btn.style.background = '#dc2626';
+                    return;
+                }
+
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    btn.textContent = 'Submit';
+                    btn.disabled = false;
+                    btn.style.background = '#dc2626';
+                    return;
+                }
+
+                if (data.status === 'created') {
+                    btn.textContent = data.issue_key;
+                    btn.style.background = '#10b981';
+                    btn.disabled = false;
+                    btn.onclick = function() { window.open(data.issue_url, '_blank'); };
+                }
+            } catch (err) {
+                alert('Failed to create issue: ' + err.message);
+                btn.textContent = 'Submit';
+                btn.disabled = false;
+                btn.style.background = '#dc2626';
+            }
+        }
 
         function showTab(tabName) {
             // Hide all tabs

@@ -291,6 +291,89 @@ class JiraIntegration:
         """Get URL for a Jira issue"""
         return f"{self.config.url}/browse/{issue_key}"
 
+    def create_report(self, summary: str, description: str) -> Optional[str]:
+        """Create a Jira issue for a dashboard problem report."""
+        if not self.enabled:
+            logger.warning("Cannot create Jira: Integration not enabled")
+            return None
+
+        dashboard_url = os.environ.get(
+            'DASHBOARD_URL',
+            'https://winc-dashboard-poc-winc-dashboard-poc.apps.build10.ci.devcluster.openshift.com'
+        )
+
+        adf_description = {
+            "version": 1,
+            "type": "doc",
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": description}
+                    ]
+                },
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "Reported from: "},
+                        {"type": "text", "text": dashboard_url,
+                         "marks": [{"type": "link", "attrs": {"href": dashboard_url}}]}
+                    ]
+                }
+            ]
+        }
+
+        try:
+            issue_data = {
+                'fields': {
+                    'project': {'key': self.config.project_key},
+                    'summary': f"[Dashboard] {summary}",
+                    'description': adf_description,
+                    'issuetype': {'name': self.config.issue_type},
+                    'priority': {'name': self.config.priority}
+                }
+            }
+
+            if self.config.component:
+                issue_data['fields']['components'] = [{'name': self.config.component}]
+
+            create_url = f"{self.config.url}/rest/api/3/issue"
+            logger.info(f"Creating dashboard report: [Dashboard] {summary}")
+
+            response = requests.post(
+                create_url,
+                headers=self._get_headers(),
+                json=issue_data,
+                timeout=30,
+                allow_redirects=False
+            )
+
+            if response.status_code in (200, 201):
+                issue_key = response.json().get('key')
+                logger.info(f"Created dashboard report: {issue_key}")
+                return issue_key
+
+            if response.status_code in (301, 302, 303, 307, 308):
+                redirect_url = response.headers.get('Location')
+                if redirect_url:
+                    response = requests.post(
+                        redirect_url,
+                        headers=self._get_headers(),
+                        json=issue_data,
+                        timeout=30
+                    )
+                    if response.status_code in (200, 201):
+                        issue_key = response.json().get('key')
+                        logger.info(f"Created dashboard report (after redirect): {issue_key}")
+                        return issue_key
+
+            logger.error(f"Dashboard report creation failed: {response.status_code} - {response.text}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error creating dashboard report: {e}")
+            return None
+
 
 # Global Jira integration instance
 _jira_instance: Optional[JiraIntegration] = None

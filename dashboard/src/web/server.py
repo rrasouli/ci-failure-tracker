@@ -696,6 +696,40 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         else:
             return jsonify({'error': 'Failed to create Jira issue'}), 500
 
+    @app.route('/api/jira/report-problem', methods=['POST'])
+    def api_report_problem():
+        """Create a Jira issue for a dashboard problem report."""
+        from integrations import get_jira_integration
+
+        jira = get_jira_integration()
+        if not jira:
+            return jsonify({
+                'status': 'disabled',
+                'message': 'Jira integration not configured. Set JIRA_API_TOKEN environment variable.'
+            })
+
+        data = request.json
+        if not data:
+            return jsonify({'error': 'Missing request data'}), 400
+
+        summary = data.get('summary', '').strip()
+        description = data.get('description', '').strip()
+
+        if not summary or not description:
+            return jsonify({'error': 'Both summary and description are required'}), 400
+
+        issue_key = jira.create_report(summary=summary, description=description)
+
+        if issue_key:
+            return jsonify({
+                'status': 'created',
+                'issue_key': issue_key,
+                'issue_url': jira.get_issue_url(issue_key),
+                'message': f'Created report: {issue_key}'
+            })
+        else:
+            return jsonify({'error': 'Failed to create Jira issue'}), 500
+
     @app.route('/api/analyze-failure', methods=['POST'])
     def api_analyze_failure():
         """
