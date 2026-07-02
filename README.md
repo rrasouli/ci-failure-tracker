@@ -421,6 +421,26 @@ pip install -r requirements.txt
 
 ---
 
+## Agent-Powered SDLC (Fullsend)
+
+This repository is enrolled in [fullsend](https://github.com/fullsend-ai/fullsend) for automated agent-driven development. Five agents operate through GitHub workflows:
+
+| Agent | Trigger | What it does |
+|-------|---------|--------------|
+| **Triage** | Issue opened/edited | Classifies, labels, checks duplicates, assesses info completeness |
+| **Code** | `/fs-code` on issue | Reads issue, implements fix, runs pytest, pushes branch, opens PR |
+| **Review** | PR opened/synced | Reviews for PEP 8, SQLite safety, collector ABC compliance, security |
+| **Fix** | Review requests changes | Reads feedback, implements fix, pushes (max 2 rounds) |
+| **Retro** | PR merged | Post-merge retrospective |
+
+Agents are inert until GitHub Apps are installed and GCP Workload Identity Federation is configured.
+
+**Documentation:**
+- [Fullsend Architecture](docs/FULLSEND_ARCHITECTURE.md) -- system diagrams, self-healing loop, security model
+- [Adoption Summary](docs/FULLSEND_ADOPTION_SUMMARY.md) -- decisions, risk assessment, rollout phases
+
+---
+
 ## Future Enhancements
 
 1. **Slack Notifications**: Send daily summary to #windows-containers channel

@@ -240,6 +240,19 @@ tracking:
 
 These tests will be hidden from the dashboard even if they appear in ReportPortal.
 
+## Reporting Dashboard Problems
+
+If you encounter a bug or issue with the dashboard itself (broken UI, incorrect data, errors), you can file a Jira ticket directly from the dashboard:
+
+1. Click the **"Report a Problem"** button in the top-right corner of the header
+2. Fill in a **Summary** (short title for the issue)
+3. Add a **Description** (what happened, what you expected, steps to reproduce)
+4. Click **Submit**
+
+A Jira bug is created automatically in the configured project with a `[Dashboard]` prefix. On success, the modal shows the issue key as a clickable link to the new ticket.
+
+**Requirements:** The dashboard must have Jira integration configured (`JIRA_USER`, `JIRA_API_TOKEN`, and `JIRA_URL` environment variables). If Jira is not configured, the submit will return an error.
+
 ## Support
 
 For technical issues or questions:
@@ -248,5 +261,5 @@ For technical issues or questions:
 
 ---
 
-**Last Updated:** March 23, 2026
-**Dashboard Version:** 1.0
+**Last Updated:** July 2, 2026
+**Dashboard Version:** 1.1

@@ -12,6 +12,7 @@ Web dashboard for tracking OpenShift CI test pass rates over time. Focuses on ac
 - **OCP Test Focus**: Automatically filters to show only OCP-* tests (excludes infrastructure failures)
 - **Historical Tracking**: SQLite database with 30 days of test history
 - **Real-time Dashboard**: Interactive charts and test rankings
+- **Report a Problem**: File Jira bugs directly from the dashboard UI
 - **Key Metrics**:
   - Overall pass rate % over time
   - Per-test pass rates (identify flaky/failing tests)
@@ -182,6 +183,10 @@ Each failing test shows a **"View logs"** link that:
 - **Version**: All, 4.21, 4.22
 - **Automatic**: Only shows OCP-* tests (infrastructure failures filtered out)
 
+### Report a Problem
+
+Click the **"Report a Problem"** button in the dashboard header to file a Jira bug directly from the UI. A modal collects a summary and description, then creates a `[Dashboard]`-prefixed issue in the configured Jira project. Requires `JIRA_USER`, `JIRA_API_TOKEN`, and `JIRA_URL` environment variables.
+
 ### API Endpoints
 
 REST APIs for custom integrations:
@@ -193,6 +198,7 @@ REST APIs for custom integrations:
 - `POST /api/trigger-collection` - Start data collection
 - `GET /api/collection-status` - Check collection progress
 - `GET /logs?content=<log>&test=<name>` - View logs page
+- `POST /api/jira/report-problem` - Create a Jira bug from the dashboard
 
 ### Test Suite Filtering
 
