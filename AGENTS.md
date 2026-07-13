@@ -22,6 +22,9 @@ Most agent work targets the dashboard.
 
 3. **Surgical changes.** Only modify files directly related to the issue. If you
    discover unrelated problems, note them but do not fix them.
+   Exception: for dead-code cleanup issues, scan the affected files for all
+   orphaned artifacts related to the same removed feature (unused imports,
+   constants, test classes, helper functions) and remove them in the same PR.
 
 4. **Commit message format.** Use Conventional Commits:
    - `fix(collector): handle empty JUnit XML`
