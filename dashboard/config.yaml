@@ -294,6 +294,13 @@ tracking:
   blocklist:
     - "OCP-60944"  # Example: Removed from test suite
 
+# GitHub integration (Report a Problem feature)
+github:
+  # Target repository for issues filed via "Report a Problem"
+  repo: ""
+  # GitHub usernames to @mention on new issues (ensures admin notification)
+  notify_users: []
+
 # Database configuration
 database:
   # Path to SQLite database file

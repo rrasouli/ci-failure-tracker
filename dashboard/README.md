@@ -12,7 +12,7 @@ Web dashboard for tracking OpenShift CI test pass rates over time. Focuses on ac
 - **OCP Test Focus**: Automatically filters to show only OCP-* tests (excludes infrastructure failures)
 - **Historical Tracking**: SQLite database with 30 days of test history
 - **Real-time Dashboard**: Interactive charts and test rankings
-- **Report a Problem**: File Jira bugs directly from the dashboard UI
+- **Report a Problem**: File GitHub issues directly from the dashboard UI
 - **Key Metrics**:
   - Overall pass rate % over time
   - Per-test pass rates (identify flaky/failing tests)
@@ -185,7 +185,89 @@ Each failing test shows a **"View logs"** link that:
 
 ### Report a Problem
 
-Click the **"Report a Problem"** button in the dashboard header to file a Jira bug directly from the UI. A modal collects a summary and description, then creates a `[Dashboard]`-prefixed issue in the configured Jira project. Requires `JIRA_USER`, `JIRA_API_TOKEN`, and `JIRA_URL` environment variables.
+Click the **"Report a Problem"** button in the dashboard header to file a GitHub issue directly from the UI.
+
+**How it works:**
+
+1. User clicks "Report a Problem" in the header
+2. If GitHub OAuth is configured and user is not logged in, redirects to GitHub login first
+3. A modal opens with Summary and Description fields
+4. User fills in details and clicks Submit
+5. Dashboard constructs a pre-filled GitHub issue URL and opens it in a new tab
+6. User reviews the pre-filled issue on GitHub and clicks "Submit new issue"
+
+The issue is created by the user through GitHub's standard UI, not via API -- it appears under their GitHub identity.
+
+**Issue format:**
+- Title: `[Dashboard] <summary>`
+- Body: `<description>` + "Reported via CI Dashboard" footer
+- Label: `bug`
+- Admin notifications: `/cc @user1 @user2` appended if `GITHUB_NOTIFY_USERS` is configured
+
+**Configuration (`config.yaml`):**
+
+```yaml
+github:
+  repo: "org/repo"
+  notify_users: ["admin1", "admin2"]
+```
+
+| Key | Description |
+|-----|-------------|
+| `github.repo` | Target repo for issues (e.g. `org/repo`) |
+| `github.notify_users` | List of GitHub usernames to @mention on new issues |
+
+Environment variables `GITHUB_REPO` and `GITHUB_NOTIFY_USERS` override config.yaml values when set.
+
+**OAuth environment variables (secrets, not in config file):**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_OAUTH_CLIENT_ID` | No | GitHub OAuth App client ID (enables login gate) |
+| `GITHUB_OAUTH_CLIENT_SECRET` | No | GitHub OAuth App client secret |
+| `FLASK_SECRET_KEY` | No | Stable secret for session persistence across restarts |
+
+When OAuth credentials are not configured, the Report a Problem button works without authentication (useful for SSO-protected deployments where users are already authenticated via oauth-proxy).
+
+### GitHub OAuth
+
+The dashboard supports optional GitHub OAuth 2.0 to gate the Report a Problem feature behind login.
+
+**Endpoints:**
+- `/auth/github/login` -- Redirects to GitHub authorization page
+- `/auth/github/callback` -- Handles OAuth callback, exchanges code for token
+- `/auth/github/status` -- Returns JSON auth state (used by frontend)
+- `/auth/github/logout` -- Clears session
+
+**Security:**
+- CSRF protection via random state parameter
+- Access tokens stored server-side in a bounded token store (not in cookies)
+- Only a random token ID goes into the signed session cookie
+- OAuth scope: `public_repo` (minimum for creating issues on public repos)
+- Token store auto-evicts expired entries
+
+**Setup:**
+1. Create a GitHub OAuth App at https://github.com/settings/developers
+2. Set the callback URL to `https://<dashboard-url>/auth/github/callback`
+3. Set `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` env vars
+4. Set `FLASK_SECRET_KEY` to a stable random value (sessions survive pod restarts)
+
+### Admin Notifications
+
+When `github.notify_users` is configured (or `GITHUB_NOTIFY_USERS` env var is set), every issue filed via Report a Problem includes `@mentions` in the body. This ensures repo admins receive GitHub notifications regardless of their watch settings.
+
+**Via config.yaml (preferred):**
+```yaml
+github:
+  notify_users: ["admin1", "admin2"]
+```
+
+**Via environment variable (overrides config):**
+```bash
+oc set env deployment/<name> GITHUB_NOTIFY_USERS=user1,user2 -n <namespace>
+```
+
+Leading `@` signs and whitespace are stripped automatically.
 
 ### API Endpoints
 
@@ -198,7 +280,8 @@ REST APIs for custom integrations:
 - `POST /api/trigger-collection` - Start data collection
 - `GET /api/collection-status` - Check collection progress
 - `GET /logs?content=<log>&test=<name>` - View logs page
-- `POST /api/jira/report-problem` - Create a Jira bug from the dashboard
+- `GET /auth/github/status` - GitHub OAuth auth state
+- `GET /auth/github/login` - Start GitHub OAuth login flow
 
 ### Test Suite Filtering
 

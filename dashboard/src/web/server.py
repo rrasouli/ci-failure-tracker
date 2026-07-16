@@ -430,8 +430,10 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
             blocklist = yaml_config.get('tracking', {}).get('blocklist', [])
             config_versions = yaml_config.get('tracking', {}).get('versions', [])
             config_platforms = yaml_config.get('tracking', {}).get('platforms', [])
+            github_config = yaml_config.get('github', {})
     except Exception as e:
         print(f"Warning: Could not load tracking config: {e}")
+        github_config = {}
 
     # Initialize database and calculator
     db = DashboardDatabase(db_path)
@@ -464,8 +466,26 @@ def create_app(db_path: str, config: dict = None, config_file: str = 'config.yam
         """Render main dashboard page.
         Shows whatever data is already in the DB from cron/manual collection.
         Users trigger collection manually via the refresh button."""
-        github_repo = os.environ.get('GITHUB_REPO', '')
-        return render_template('dashboard.html', enable_ai=enable_ai, github_repo=github_repo)
+        github_repo = os.environ.get('GITHUB_REPO', '') or github_config.get('repo', '')
+        notify_users_raw = os.environ.get('GITHUB_NOTIFY_USERS', '')
+        if notify_users_raw:
+            github_notify_users = [
+                u.strip().lstrip('@')
+                for u in notify_users_raw.split(',')
+                if u.strip()
+            ]
+        else:
+            github_notify_users = [
+                u.strip().lstrip('@')
+                for u in github_config.get('notify_users', [])
+                if isinstance(u, str) and u.strip()
+            ]
+        return render_template(
+            'dashboard.html',
+            enable_ai=enable_ai,
+            github_repo=github_repo,
+            github_notify_users=github_notify_users,
+        )
 
     @app.route('/logs')
     def view_logs():
